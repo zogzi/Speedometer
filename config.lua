@@ -9,8 +9,9 @@ Config.ShowPassenger = false
 Config.HideWhenPaused = true
 
 Config.UpdateInterval = 100 -- milliseconds while driving (minimum 50)
+Config.RpmInterval = 16 -- RPM-only sampling; prioritizes smooth motion (minimum 16 ms)
 Config.IdleInterval = 750 -- milliseconds outside supported vehicles
-Config.StatusInterval = 500 -- fuel, engine health and lights polling
+Config.StatusInterval = 500 -- engine health and lights polling
 
 -- Road vehicles only. Add/remove GTA vehicle classes here.
 Config.Classes = {
@@ -19,18 +20,6 @@ Config.Classes = {
     [10] = true, [11] = true, [12] = true, [17] = true,
     [18] = true, [19] = true, [20] = true, [22] = true
 }
-
-Config.Fuel = {
-    enabled = true,
-    capacity = 100, -- native fuel level is usually 0–100; change for custom providers
-    low = 20 -- percent
-}
-
--- Replace this function if your fuel resource does not synchronize native fuel.
--- Example: return exports['LegacyFuel']:GetFuel(vehicle)
-Config.ReadFuel = function(vehicle)
-    return GetVehicleFuelLevel(vehicle)
-end
 
 Config.Seatbelt = {
     enabled = true, -- disable if another resource already handles seatbelts

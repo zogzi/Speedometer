@@ -12,7 +12,6 @@
     <symbol id="icon-engine" viewBox="0 0 24 24"><path d="M7 7h9l3 3h2v8h-4l-2 2H7l-3-4V9h3Zm3-4h5M12.5 3v4M1 10v6M1 13h3"/></symbol>
     <symbol id="icon-belt" viewBox="0 0 24 24"><circle cx="12" cy="4" r="2"/><path d="m8 9 2-1h4l2 1 1 9M7 18l1-9M9 14h6M9 18v3m6-3v3M5 5l14 14M5 19l4-5"/></symbol>
     <symbol id="icon-light" viewBox="0 0 24 24"><path d="M13 5c-5 0-8 2-8 7s3 7 8 7V5ZM17 6l5-2m-5 6 5-1m-5 5h5m-5 4 5 1"/></symbol>
-    <symbol id="icon-fuel" viewBox="0 0 24 24"><path d="M4 21V4h10v17M3 21h13M7 7h4v5H7ZM14 12h2a2 2 0 0 1 2 2v3a2 2 0 0 0 4 0V9l-4-4m1 1v4h3"/></symbol>
   </svg>
 
   <main id="hud" class="hud" hidden aria-label="Vehicle instruments">
@@ -43,14 +42,8 @@
         <span id="unit" class="unit">KM/H</span>
       </div>
       <div class="gear-block"><span id="gear" class="gear">N</span><span class="overline">GEAR</span></div>
-      <div class="rpm-caption"><span id="rpm-value">0.0</span><span>RPM × 1000</span></div>
     </div>
 
-    <div id="fuel" class="fuel" role="img" aria-label="Fuel unknown">
-      <svg class="fuel-icon" aria-hidden="true"><use href="#icon-fuel"/></svg>
-      <div class="fuel-meter"><div class="fuel-labels"><span>FUEL</span><span id="fuel-value">—</span></div><div class="fuel-track"><div id="fuel-fill" class="fuel-fill"></div></div></div>
-      <span id="fuel-warning" class="fuel-warning" hidden>LOW</span>
-    </div>
   </main>
 
 </body>

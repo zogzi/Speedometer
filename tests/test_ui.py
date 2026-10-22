@@ -75,19 +75,15 @@ class HudTests(unittest.TestCase):
 
     def test_telemetry_deltas_warning_states_and_visibility(self):
         self.send(action="visibility", visible=True)
-        self.send(action="telemetry", speed=199, rpm=94, gear="4", fuel=12,
+        self.send(action="telemetry", speed=199, rpm=94, gear="4",
                   engine=True, engineWarning=False, lights=2, belt=True, beltAvailable=True)
         self.assertEqual(self.page.locator("#speed").inner_text(), "199")
         self.assertEqual(self.page.locator("#gear").inner_text(), "4")
-        self.assertEqual(self.page.locator("#fuel-value").inner_text(), "12%")
-        self.assertIn("low", self.page.locator("#fuel").get_attribute("class"))
         self.assertIn("redline", self.page.locator("#hud").get_attribute("class"))
         self.assertEqual(self.page.locator("#lights").get_attribute("aria-label"), "High beams on")
         self.send(action="telemetry", speed=202)
         self.assertEqual(self.page.locator("#gear").inner_text(), "4")
-        self.assertEqual(self.page.locator("#fuel-value").inner_text(), "12%")
-        self.send(action="telemetry", rpm=20, fuel=50, belt=False, engineWarning=True, lights=0)
-        self.assertNotIn("low", self.page.locator("#fuel").get_attribute("class"))
+        self.send(action="telemetry", rpm=20, belt=False, engineWarning=True, lights=0)
         self.assertNotIn("redline", self.page.locator("#hud").get_attribute("class"))
         self.assertEqual(self.page.locator("#engine").get_attribute("aria-label"), "Engine damaged")
         self.assertEqual(self.page.locator("#belt").get_attribute("aria-label"), "Seatbelt unfastened")
@@ -96,13 +92,11 @@ class HudTests(unittest.TestCase):
 
     def test_config_and_safe_zone_layout(self):
         self.send(action="config", unit="mph", maxRpm=12000, scale=1.2, right=40, bottom=35,
-                  safeZone=.05, accent="#aabbcc", lowFuel=30, fuelEnabled=False)
+                  safeZone=.05, accent="#aabbcc")
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", rpm=50, beltAvailable=False)
         self.assertEqual(self.page.locator("#unit").inner_text(), "MPH")
         self.assertEqual(self.page.locator(".tick-label").count(), 10)
-        self.assertEqual(self.page.locator("#rpm-value").inner_text(), "6.0")
-        self.assertTrue(self.page.locator("#fuel").is_hidden())
         self.assertTrue(self.page.locator("#belt").is_hidden())
         self.assertEqual(self.page.locator("html").evaluate("e => getComputedStyle(e).getPropertyValue('--accent')"), "#aabbcc")
         box = self.page.locator("#hud").bounding_box()
@@ -117,10 +111,10 @@ class HudTests(unittest.TestCase):
 
     def test_duplicate_updates_do_not_mutate_the_dom(self):
         self.send(action="visibility", visible=True)
-        telemetry = dict(action="telemetry", speed=124, rpm=52, gear="4", fuel=68,
+        telemetry = dict(action="telemetry", speed=124, rpm=52, gear="4",
                          engine=True, engineWarning=False, lights=1, belt=True, beltAvailable=True)
         config = dict(action="config", unit="kmh", scale=1,
-                      right=32, bottom=28, safeZone=.05, accent="#62f5bb", fuelEnabled=True)
+                      right=32, bottom=28, safeZone=.05, accent="#62f5bb")
         self.send(**config)
         self.send(**telemetry)
         mutations = self.page.evaluate("""({telemetry, config}) => {
@@ -139,8 +133,7 @@ class HudTests(unittest.TestCase):
 
     def test_reduced_motion_disables_gauge_transitions(self):
         self.page.emulate_media(reduced_motion="reduce")
-        for selector in ["#rpm-arc", "#fuel-fill"]:
-            self.assertEqual(self.page.locator(selector).evaluate("e => getComputedStyle(e).transitionDuration"), "0s")
+        self.assertEqual(self.page.locator("#rpm-arc").evaluate("e => getComputedStyle(e).transitionDuration"), "0s")
 
     def install_rpm_clock(self):
         self.page.evaluate("""() => {
@@ -278,19 +271,31 @@ class HudTests(unittest.TestCase):
                 self.assertEqual(records, 0)
                 self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
 
-    def test_unknown_fuel_and_malformed_input(self):
+    def test_malformed_input_and_removed_footer(self):
         self.page.emulate_media(reduced_motion="reduce")
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", fuel=-1, gear="<img>", speed=-20, rpm=999)
-        self.assertEqual(self.page.locator("#fuel-value").inner_text(), "—")
-        self.assertNotIn("low", self.page.locator("#fuel").get_attribute("class"))
         self.assertEqual(self.page.locator("#speed").inner_text(), "0")
         self.assertEqual(self.page.locator("#gear").inner_text(), "N")
         self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "75 100")
         self.send(action="telemetry", fuel=400, speed=4000)
-        self.assertEqual(self.page.locator("#fuel-value").inner_text(), "100%")
         self.assertEqual(self.page.locator("#speed").inner_text(), "999")
         self.page.evaluate("window.postMessage(null, '*')")
+        self.send(action="config", fuelEnabled=True, lowFuel=20)
+        self.assertEqual(self.page.locator("#fuel, #icon-fuel, #rpm-value, .rpm-caption").count(), 0)
+
+    def test_engine_icon_turns_red_when_damaged_and_green_when_repaired(self):
+        self.send(action="visibility", visible=True)
+        self.send(action="config", accent="#5566ff")
+        self.send(action="telemetry", engine=True, engineWarning=False)
+        color = lambda: self.page.locator("#engine").evaluate("e => getComputedStyle(e).color")
+        self.assertEqual(color(), "rgb(98, 245, 187)")
+        self.send(action="telemetry", engineWarning=True)
+        self.assertEqual(color(), "rgb(255, 98, 107)")
+        self.send(action="telemetry", engine=False)
+        self.assertEqual(color(), "rgb(255, 98, 107)")
+        self.send(action="telemetry", engine=True, engineWarning=False)
+        self.assertEqual(color(), "rgb(98, 245, 187)")
 
     def test_outside_fivem_stays_inactive_even_with_preview_query(self):
         outside = self.browser.new_page()
@@ -314,7 +319,7 @@ class HudTests(unittest.TestCase):
         self.assertIn("warning", self.page.locator("#belt").get_attribute("class"))
         self.send(action="telemetry", beltAvailable=False, lights=2, engineWarning=True)
         self.assertTrue(self.page.locator("#belt").is_hidden())
-        self.assertIn("warning", self.page.locator("#engine").get_attribute("class"))
+        self.assertIn("damaged", self.page.locator("#engine").get_attribute("class"))
         self.assertIn("high", self.page.locator("#lights").get_attribute("class"))
 
     def test_default_hud_is_compact(self):
@@ -322,7 +327,8 @@ class HudTests(unittest.TestCase):
         box = self.page.locator("#hud").bounding_box()
         self.assertLess(box["width"], 300)
         self.assertLess(box["height"], 330)
-        self.assertEqual(self.page.locator(".wordmark, .rpm-caption").count(), 2)
+        self.assertEqual(self.page.locator(".wordmark").count(), 1)
+        self.assertEqual(self.page.locator(".rpm-caption, .fuel, #rpm-value").count(), 0)
         self.assertEqual(self.page.locator(".tick-label").count(), 10)
 
     def test_embedded_canvas_does_not_paint_over_the_game(self):
@@ -407,7 +413,7 @@ class HudTests(unittest.TestCase):
                 box = self.page.locator("#hud").bounding_box()
                 self.assertGreaterEqual(box["x"], 0)
                 self.assertGreaterEqual(box["y"], 0)
-                self.send(action="telemetry", speed=999, rpm=94, gear="R", fuel=3,
+                self.send(action="telemetry", speed=999, rpm=94, gear="R",
                           beltAvailable=True, belt=False, engineWarning=True, lights=2)
                 self.page.wait_for_timeout(180)
                 arc_color = self.page.locator("#rpm-arc").evaluate("e => getComputedStyle(e).stroke")
@@ -416,9 +422,7 @@ class HudTests(unittest.TestCase):
                 gear = self.page.locator(".gear-block").bounding_box()
                 self.assertLess(speed["y"] + speed["height"], gear["y"])
                 icons = self.page.locator("#indicators").bounding_box()
-                fuel = self.page.locator("#fuel").bounding_box()
                 self.assertLess(icons["y"] + icons["height"], speed["y"])
-                self.assertLess(gear["y"] + gear["height"], fuel["y"])
 
 
 

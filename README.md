@@ -4,7 +4,7 @@ A standalone, Forza-inspired FiveM vehicle HUD. No ESX, QBCore, database, npm bu
 
 ![Compact zz-speedomter HUD, rendered with mocked FiveM messages](docs/preview.png)
 
-Version 1.2.0 brings back the earlier detailed dial, status row, and RPM readout at a reduced size. The RPM arc now interpolates smoothly between finer readings. The grey-canvas fix remains, and the NUI contains no demo page or browser preview mode.
+Version 1.3.0 removes the fuel display and bottom RPM text. The engine icon is green when healthy and running, red when engine health is below 1000, and dim when healthy but switched off. A dedicated fast RPM sampler and critically damped animation prioritize fluid arc motion. The grey-canvas fix and FiveM-only NUI remain.
 
 See [INSTALL.md](INSTALL.md) for the step-by-step server owner's guide and [PERFORMANCE.md](PERFORMANCE.md) for the local optimization and visual review, including what still needs in-game validation.
 
@@ -26,7 +26,7 @@ The folder may have another name; use that name in `ensure` and in integration e
 ## Included
 
 - Digital speed, KM/H or MPH, gear, reverse detection, and normalized RPM arc with a redline state.
-- Native fuel level, low-fuel warning, engine damage warning, headlights and high-beam indicators.
+- Green/red engine status, headlights and high-beam indicators. No fuel meter or bottom RPM caption.
 - Optional seatbelt toggle with exit blocking. The status row shows engine, belt, and light states; bikes have no belt indicator.
 - Driver-only display by default; hides on foot, on death, in unsupported vehicle classes, and in the pause menu.
 - Safe-zone-aware placement, configurable size and accent color, transparent NUI, and no input focus capture.
@@ -39,16 +39,14 @@ Edit `config.lua` and restart the resource to apply configuration changes:
 | `Scale` | `1.0` | HUD size, clamped to 0.65–1.5 |
 | `Position` | right 32, bottom 28 | Pixel offset, plus GTA safe-zone inset |
 | `Accent` | `'#62f5bb'` | Six-digit hex accent color |
-| `MaxRpm` | `9000` | Estimated RPM dial/readout scale; falls back to 9000 when omitted |
+| `MaxRpm` | `9000` | Estimated RPM tick scale; falls back to 9000 when omitted |
 | `ShowPassenger` | `false` | Also display for passengers |
 | `HideWhenPaused` | `true` | Hide when the pause menu is open |
-| `UpdateInterval` | `100` | Active telemetry interval in milliseconds; minimum 50 |
+| `UpdateInterval` | `100` | Speed, gear and vehicle checks in milliseconds; minimum 50 |
+| `RpmInterval` | `16` | Dedicated RPM sampling in milliseconds; minimum 16; about 60 Hz |
 | `IdleInterval` | `750` | Vehicle detection interval on foot |
-| `StatusInterval` | `500` | Fuel, engine status, and light polling interval |
+| `StatusInterval` | `500` | Engine health and light polling interval |
 | `Classes` | Road classes | Eligible GTA vehicle classes |
-| `Fuel.enabled` | `true` | Show the fuel meter |
-| `Fuel.capacity` | `100` | Provider's full-tank value, normalized into percent |
-| `Fuel.low` | `20` | Low-fuel warning threshold in percent |
 | `Seatbelt.enabled` | `true` | Register belt control and show belt status |
 | `Seatbelt.key` | `'B'` | Default key binding |
 | `Seatbelt.blockExit` | `true` | Block normal exit while belted |
@@ -57,19 +55,7 @@ Edit `config.lua` and restart the resource to apply configuration changes:
 
 The seatbelt feature blocks normal vehicle exit only. It does **not** change crash physics, implement ejection, provide damage protection, or make passengers invulnerable. Belt state resets on vehicle change, exit, or death. If another resource manages seatbelts, set `Config.Seatbelt.enabled = false` to avoid conflicting controls.
 
-GTA supplies normalized RPM. The dial and numeric readout estimate engine RPM using `MaxRpm`; they do not tune the engine. Neutral is shown when the engine is off or the native gear is zero; reverse is detected from backward motion. This is not a transmission simulation. Boats, aircraft, bicycles, and trains are excluded by default.
-
-## Fuel integration
-
-The default `Config.ReadFuel(vehicle)` reads `GetVehicleFuelLevel`. It does not consume or alter fuel. Resources that synchronize the native fuel level work without changes. For a different provider, replace **only this function in `config.lua`**, for example:
-
-```lua
-Config.ReadFuel = function(vehicle)
-    return exports['LegacyFuel']:GetFuel(vehicle)
-end
-```
-
-Start that provider before this HUD. Set `Config.Fuel.capacity` to its full-tank value. The function runs at the slower status interval and should not yield. Errors or nonnumeric results display `—`, not an empty tank. Fuel is not polled when its meter is disabled.
+GTA supplies normalized RPM. The tick numbers estimate engine RPM in thousands using `MaxRpm`; they do not tune the engine. Neutral is shown when the engine is off or the native gear is zero; reverse is detected from backward motion. This is not a transmission simulation. Boats, aircraft, bicycles, and trains are excluded by default.
 
 ## Optional client integrations
 
@@ -87,9 +73,11 @@ local belted = exports['zz-speedomter']:IsSeatbeltOn()
 
 ## Performance and validation
 
-The client polls telemetry at 10 Hz by default, rounds speed and retains RPM to 0.1-percent precision, and sends only changed fields to NUI. Telemetry and status buffers are reused; message objects are created only when data changes. Fuel, engine health, and lights are read at 2 Hz. On foot, the main loop sleeps for 750 ms. Repeated display values do not rewrite DOM text or attributes. Tick marks are built once and only rebuilt when `MaxRpm` changes. A Lua frame loop is necessary **only while belted with exit blocking enabled**, because FiveM control suppression lasts one frame.
+Speed, gear, engine-running state and vehicle eligibility update every 100 ms by default. Engine health and lights update every 500 ms. A separate RPM worker samples every 16 ms while the HUD is visible, retaining 0.01-percent RPM detail and sending only changes. It stops on foot, while paused or suppressed, and when its vehicle disappears. There is no fuel polling or fuel-provider integration. Old fuel config fields are ignored.
 
-The browser uses one `requestAnimationFrame` callback while the RPM arc moves. It applies time-based damping to the latest target, so updates continue from the current drawn position at the browser's refresh rate. There is no stacked CSS length transition. The callback stops after the arc settles, when the HUD hides, or when the document goes into the background. Reduced-motion mode snaps directly to readings. Other UI elements are not repainted by this callback, and the browser does not poll the game or increase Lua sampling frequency.
+The browser updates the arc through one on-demand `requestAnimationFrame` callback. Critically damped motion preserves both drawn position and velocity when readings change, so retargeting does not restart movement. It is time-based, bounded to the dial range, and stops once settled or hidden. Reduced-motion mode snaps directly to readings. Tick marks are built once and only rebuilt when `MaxRpm` changes.
+
+This version deliberately spends more CPU on RPM sampling to prioritize smoothness. Actual sampling depends on game frame scheduling. Increase `Config.RpmInterval` to 33 or 50 for fewer RPM reads; browser interpolation remains active. Other telemetry keeps its independent slower polling rate. No fixed `resmon` number or FPS is promised.
 
 The seatbelt frame worker uses two native calls per frame, down from five. Vehicle class is cached, and stationary vehicles skip reverse-vector reads. For a belt indicator without per-frame exit blocking, use `Config.Seatbelt.blockExit = false`; players can then exit while belted. See `PERFORMANCE.md` for native-call checks and how to capture sustained headlight-related CPU increases with FiveM's profiler.
 
@@ -101,7 +89,7 @@ No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server
 
 The NUI activates only when FiveM provides `GetParentResourceName`. Opening the HTML in a normal browser, including with `?preview`, stays blank. There are no full-screen presentation backgrounds, forms, or demo controls. Tests mock the FiveM interface externally; that harness is not part of the runtime resource.
 
-The default footprint is approximately 280 × 327 pixels, smaller than the original 320 × 374. Only the local dial shading, status row, and fuel meter paint a background. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
+The default footprint is approximately 280 × 302 pixels, smaller than the original 320 × 374. Only local dial shading and the status row paint a background. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
 
 ### Automated checks
 
@@ -123,9 +111,9 @@ Lua tests exercise the actual client code with a deterministic scheduler and moc
 
 1. `ensure zz-speedomter`; verify no errors in the client F8 console.
 2. Enter a car, accelerate, brake, reverse, and switch units. Verify speed, gear, and RPM changes.
-3. Toggle headlights/high beams, inspect fuel, toggle the belt and try exiting. Unbelt and exit; verify the HUD hides.
+3. Toggle headlights/high beams, toggle the belt and try exiting. Unbelt and exit; verify the HUD hides.
 4. Check pause/resume, driver/passenger behavior, a motorcycle, vehicle switching, and a resource restart while already driving.
-5. Confirm your fuel resource's level matches the meter and inspect `resmon 1` in each operating state.
+5. Damage and repair the engine; verify the icon changes green/red correctly. Inspect `resmon 1` in each operating state.
 
 ## Layout
 

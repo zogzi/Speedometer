@@ -9,15 +9,14 @@
   if (!hasNui) return;
   const state = {
     speed: 0, rpm: 0, gear: 'N', engine: false, engineWarning: false,
-    lights: 0, fuel: -1, belt: false, beltAvailable: true,
+    lights: 0, belt: false, beltAvailable: true,
   };
-  const config = { unit: 'kmh', maxRpm: 9000, lowFuel: 20, fuelEnabled: true };
+  const config = { unit: 'kmh', maxRpm: 9000 };
   const telemetryKeys = Object.keys(state);
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const number = (value, fallback) => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   const refs = Object.fromEntries([
-    'speed', 'unit', 'gear', 'rpm-arc', 'rpm-value', 'engine', 'belt', 'lights',
-    'fuel', 'fuel-value', 'fuel-fill', 'fuel-warning',
+    'speed', 'unit', 'gear', 'rpm-arc', 'engine', 'belt', 'lights',
   ].map((id) => [id, $(id)]));
 
   // Avoid replacing text nodes or dirtying attributes when the display is unchanged.
@@ -43,6 +42,7 @@
   let rpmDisplay = 0;
   let rpmFrame = 0;
   let rpmTime = 0;
+  let rpmVelocity = 0;
 
   function paintRpm() {
     attribute(refs['rpm-arc'], 'stroke-dasharray', `${Number((rpmDisplay * .75).toFixed(3))} 100`);
@@ -52,6 +52,7 @@
     if (rpmFrame) cancelAnimationFrame(rpmFrame);
     rpmFrame = 0;
     rpmTime = 0;
+    rpmVelocity = 0;
   }
 
   function stepRpm(now) {
@@ -59,15 +60,23 @@
     if (hud.hidden || document.hidden) {
       rpmDisplay = rpmTarget;
       rpmTime = 0;
+      rpmVelocity = 0;
       return;
     }
-    // Time-based damping keeps the same response at 30, 60, or 144 Hz.
-    // Retargeting changes only the destination, never the current position.
+    // Exact critically damped motion: keep both position and velocity when
+    // a new reading arrives, with the same response at any refresh rate.
     const elapsed = Math.max(0, now - rpmTime);
     rpmTime = now;
-    rpmDisplay += (rpmTarget - rpmDisplay) * (1 - Math.exp(-elapsed / 60));
-    const settled = Math.abs(rpmTarget - rpmDisplay) < .015;
-    if (settled) rpmDisplay = rpmTarget;
+    const frequency = .05;
+    const offset = rpmDisplay - rpmTarget;
+    const coefficient = rpmVelocity + frequency * offset;
+    const decay = Math.exp(-frequency * elapsed);
+    const position = rpmTarget + (offset + coefficient * elapsed) * decay;
+    rpmVelocity = (rpmVelocity - frequency * coefficient * elapsed) * decay;
+    rpmDisplay = clamp(position, 0, 100);
+    if (position !== rpmDisplay) rpmVelocity = 0;
+    const settled = Math.abs(rpmTarget - rpmDisplay) < .015 && Math.abs(rpmVelocity) < .002;
+    if (settled) { rpmDisplay = rpmTarget; rpmVelocity = 0; }
     paintRpm();
     if (!settled) rpmFrame = requestAnimationFrame(stepRpm);
     else rpmTime = 0;
@@ -132,13 +141,12 @@
     if ('rpm' in delta) {
       state.rpm = clamp(number(delta.rpm, 0), 0, 100);
       setRpmTarget(state.rpm);
-      text(refs['rpm-value'], (state.rpm / 100 * config.maxRpm / 1000).toFixed(1));
       hud.classList.toggle('redline', state.rpm >= 85);
     }
     if ('gear' in delta) text(refs.gear, /^[NR0-9]$|^1[0-9]$/.test(String(delta.gear)) ? String(delta.gear) : 'N');
     if ('engine' in delta || 'engineWarning' in delta) {
       refs.engine.classList.toggle('active', state.engine && !state.engineWarning);
-      refs.engine.classList.toggle('warning', state.engineWarning);
+      refs.engine.classList.toggle('damaged', state.engineWarning);
       attribute(refs.engine, 'aria-label', state.engineWarning ? 'Engine damaged' : state.engine ? 'Engine running' : 'Engine off');
     }
     if ('belt' in delta || 'beltAvailable' in delta) {
@@ -152,17 +160,6 @@
       refs.lights.classList.toggle('high', state.lights === 2);
       attribute(refs.lights, 'aria-label',
         state.lights === 2 ? 'High beams on' : state.lights === 1 ? 'Headlights on' : 'Lights off');
-    }
-    if ('fuel' in delta) {
-      const raw = number(delta.fuel, -1);
-      const fuel = raw < 0 ? -1 : clamp(Math.round(raw), 0, 100);
-      const low = fuel >= 0 && fuel <= config.lowFuel;
-      text(refs['fuel-value'], fuel < 0 ? '—' : `${fuel}%`);
-      const transform = `scaleX(${Math.max(0, fuel) / 100})`;
-      if (refs['fuel-fill'].style.transform !== transform) refs['fuel-fill'].style.transform = transform;
-      refs.fuel.classList.toggle('low', low);
-      hidden(refs['fuel-warning'], !low);
-      attribute(refs.fuel, 'aria-label', fuel < 0 ? 'Fuel unknown' : `Fuel ${fuel} percent${low ? ', low' : ''}`);
     }
   }
 
@@ -186,9 +183,6 @@
         drawTicks();
       }
     }
-    if ('lowFuel' in data) config.lowFuel = clamp(number(data.lowFuel, 20), 0, 100);
-    if ('fuelEnabled' in data) config.fuelEnabled = data.fuelEnabled === true;
-    hidden(refs.fuel, !config.fuelEnabled);
     render(state);
   }
 

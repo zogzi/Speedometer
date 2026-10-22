@@ -1,69 +1,53 @@
-# zz-speedomter review
+# zz-speedomter 1.3.0 review
 
 ## Verified locally
 
-- **58 checks in Lua 5.4**, running the real client script with mocked FiveM natives and a deterministic scheduler.
-- **21 browser tests in Chromium**, using the real HTML/CSS/JavaScript and NUI message protocol.
-- JavaScript syntax validation.
-- Embedded-frame pixel regression for the grey canvas, plus visual inspection against dark and synthetic bright backgrounds. These are browser renders, not GTA screenshots.
+- **63 Lua checks**, running the real client script in Lua 5.4 with deterministic scheduling and mocked FiveM natives.
+- **22 Chromium tests**, running the actual NUI and its message protocol.
+- JavaScript syntax and Git whitespace checks.
+- Embedded-browser pixel regression: no opaque grey layer before, during, or after HUD visibility.
+- Visual inspection and recorded RPM motion use browser renders with mocked data, not GTA screenshots.
 
-## Work budget at default settings
+## Work budget
 
-| State | Behavior verified by the tests |
+| State | Verified behavior |
 | --- | --- |
-| On foot | Vehicle detection every 750 ms; no speed/RPM/fuel sampling; no seatbelt worker |
-| Driving | Speed/RPM sampled at 10 Hz; slower status reads at 2 Hz |
-| 10-second unchanged state | 100 speed reads, 20 fuel reads, **zero additional telemetry messages** |
-| Speed-only change | Only the changed speed field is sent to NUI |
-| Paused or suppressed | HUD telemetry/status sampling stops |
-| Unbelted | No per-frame seatbelt worker |
-| Belted, exit blocking enabled | Per-frame exit-control suppression, required by FiveM |
-| Belt frame-worker native budget | Two calls per frame, reduced from five: current-vehicle check and player exit-control suppression |
-| Vehicle class | Queried once per observed vehicle rather than every active tick |
-| Parked, engine off | No reverse-vector or gear reads |
-| Stable lights off / low beam / high beam | Same 2-Hz light polling, no repeated NUI messages or extra worker |
-| Light-only browser updates | No RPM frame scheduled; repeated light state does not mutate the DOM |
-| Browser idle | No telemetry polling timer; RPM animation stops after settling |
-| Moving RPM | One frame callback updates only the arc, between 10 Hz game readings |
-| Hidden HUD or background document | Pending RPM frame callback is cancelled |
-| 30 / 60 / 144 Hz simulated frames | Matching arc progress at equal elapsed time |
-| RPM retargets during movement | Position stays continuous, with one pending frame callback |
-| Repeated configuration | Static arcs retained; tick marks rebuilt only when `MaxRpm` changes |
-| Embedded, hidden HUD | Every background pixel matches the host scene before and after hiding |
-| Embedded, visible HUD | Sampled pixels outside the HUD remain identical to the host scene |
-| 1,000 identical browser updates | No extra DOM mutations from duplicate message handling, separate from active animation frames |
-| 100-second changing-telemetry simulation | One telemetry packet per active tick; no additional worker threads |
-| 200 rapid belt toggle pairs | One on-demand worker, which exits without applying an exit block |
-| Disabled seatbelt / indicator-only mode | No belt command when disabled; no frame worker without exit blocking |
-| NUI startup request stalls | Aborted after 2 seconds and retried with bounded backoff; timeout is cleared after completion |
+| On foot | One vehicle-detection loop, 750-ms sleeps, no RPM or fuel reads |
+| Visible vehicle | Independent 100-ms speed/gear/eligibility and 16-ms RPM workers |
+| Health and lights | 500-ms polling; engine running state checked by the 100-ms loop |
+| 10-second unchanged simulation | 100 speed reads, 625 RPM reads, 20 light reads, zero fuel reads and no repeated telemetry messages |
+| Moving RPM | 0.01-percent detail, sent as RPM-only packets; other fields keep their slower cadence |
+| Hidden/paused/suppressed | Fast RPM sampler exits; browser animation cancels |
+| Temporary invalid vehicle | RPM worker stops safely and restarts after validation |
+| Rapid hide/show | At most one active RPM worker |
+| Fuel and legacy fuel providers | No native calls, provider calls or telemetry fields |
+| Belt exit blocking | Two native calls per frame; no belt worker when unbelted or exit blocking disabled |
+| Vehicle class | Cached per observed vehicle |
+| Parked, engine off | No RPM, reverse-vector or gear reads |
+| Stable lights off / low / high | Equal light polling; no repeated light packets or additional animation |
+| Browser RPM motion | One frame callback, preserving position and velocity across targets |
+| 30 / 60 / 144 Hz simulated frames | Matching progress at equal elapsed time |
+| Settled / hidden / backgrounded | No continuing RPM animation callbacks |
+| Repeated messages/config | No extra DOM writes from duplicate handling; ticks rebuilt only if dial scale changes |
 
-These are simulated scheduling/message counts, **not measured in-game CPU times**. Real frames can delay scheduling, and actual engine RPM or fuel fluctuation naturally generates additional updates.
+These are native-call/message counts from simulations, not measured in-game CPU times. The main and RPM workers reuse state and send changes only. The dedicated RPM sampler adds native calls and potentially more local NUI messages than version 1.2.0. This is an intentional smoothness tradeoff, not a claim of lower total CPU time. Game frame scheduling determines the actual cadence. `Config.RpmInterval = 33` or `50` reduces RPM sampling while retaining interpolation.
 
-The telemetry and status buffers are reused. Message objects are allocated only when data changes. State resets occur on vehicle eligibility transitions rather than on every idle tick. There are no server scripts, network events, runtime package dependencies, external fonts, remote UI assets, blur filters, continuous flashing effects, or fixed `will-change` compositor hints.
+The browser uses exact critically damped motion with a 20-ms spring time scale. Position and velocity continue across new targets. The displayed range is clamped to 0–100 percent; abrupt target changes can retain a small amount of motion before reversing. Once both error and velocity are negligible, the arc snaps to its target and the callback stops. Reduced motion bypasses the animation. Other UI elements are not redrawn by the frame callback.
 
-Text, attributes, hidden state, and configuration styles are written only when their displayed values change. Startup timers exist only during the bounded NUI handshake; they do not poll telemetry. Additional regression checks cover passenger/pause options, custom fuel capacity, initial MPH units, interval limits, and game-timer wraparound.
-
-RPM readings now retain 0.1-percent detail instead of 1-percent steps, without increasing native polling frequency. An on-demand frame callback uses exponential damping with a 60 ms time constant. It advances from the displayed value toward the latest target, never overshoots, and snaps the imperceptible tail to its target before stopping. Reduced motion bypasses animation. Frame-driven animation necessarily adds SVG painting work while RPM changes; no universal frame-time or FPS improvement is claimed.
-
-The seatbelt worker reuses the ped validated when buckling and checks the current vehicle each frame. Death and driver eligibility remain checked by the normal active poll. The duplicate control-group 27 call was removed; player control group 0 handles exit suppression. This reduces that worker's native-call count by 60%, **not a measured 60% reduction in total CPU time**. See the [official native reference](https://github.com/citizenfx/natives/blob/master/PAD/DisableControlAction.md) for the per-frame requirement and input groups.
+The seatbelt worker still uses one current-vehicle check and one player exit-control suppression per frame. Main polling handles death and driver eligibility. See the [official native reference](https://github.com/citizenfx/natives/blob/master/PAD/DisableControlAction.md) for the per-frame control requirement. Its native-call budget is reduced from the original five to two; this is not a measured 60% reduction in total resource CPU time.
 
 ## Visual checks
 
-- FiveM-only transparent overlay: removed browser demo markup, styles, and activation logic.
-- Removed the forced dark color scheme, which reproduced an opaque `(18,18,18)` canvas in an embedded frame despite transparent root/body CSS. After the fix, the test's `(33,66,99)` host background remains unchanged.
-- Restored the earlier detailed dial, estimated RPM readout, gear badge, ZZ wordmark, fuel labels, and status row.
-- Reduced default footprint of approximately 280 × 327 pixels, 12.5% smaller in each dimension than the original 320 × 374.
-- Feathered shading and status/fuel backing improve readability without any full-screen layer.
-- Layout tested at 720p, 1080p, ultrawide 1080p, and 4K.
-- Scale range 0.65–1.5 tested at 720p with a 10% safe-zone inset. Speed, gear, status icons, and fuel remain separate.
-- Redline color checked after its transition settles; seatbelt/fuel visibility and reduced-motion support included.
+- Detailed dial, speed, gear, status icons and ZZ wordmark retained.
+- Fuel meter, fuel icon, bottom RPM readout and RPM explanation removed from the HTML and CSS.
+- Engine indicator: green when healthy/running; red whenever reported engine health is below 1000; dim when healthy/off. Repair clears red. These semantic colors remain green/red even with a custom dial accent.
+- Approximately 280 × 302 pixels at the default scale; layouts checked from 720p to 4K and scales 0.65–1.5.
+- Normal color scheme, transparent root/body, no browser demo and no full-screen background.
 - Safe-zone placement refreshes after leaving the pause menu.
 
-## Still requires an actual FiveM session
+## Requires a FiveM client
 
-There is no defensible universal “fully optimized” or `0.00 ms` guarantee. This environment cannot run a GTA/FiveM client, so native integration, real frame time, other HUD conflicts, fuel-provider compatibility, and daylight/night readability inside GTA remain unmeasured.
-
-On a representative server/client, use `resmon 1` to compare on-foot, driving, and belted states. Check F8 for errors; test entry, reverse, units, lights, fuel, pause/resume, bike exclusion, belt exit blocking, and a resource restart while already driving. If the server has another speedometer or belt system, disable the overlapping component or this resource's optional belt handler.
+GTA/FiveM is not available in this cloud machine. Real native costs, frame time, other HUD interactions and in-game day/night readability remain unmeasured. Test acceleration, shift RPM drops, braking, reverse, engine start/stop, damage/repair, lights, pause/resume, seatbelt exit blocking, vehicle changes and resource restart. Use `resmon 1` to measure the deliberate high-rate RPM cost on your client; no universal 0.00-ms or fixed FPS guarantee is made.
 
 ### Sustained headlight CPU increase
 

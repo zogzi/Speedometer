@@ -4,9 +4,11 @@ local currentVehicle, beltVehicle = 0, 0
 local observedVehicle, vehicleClass = 0, -1
 local belted, beltAvailable = false, false
 local beltThreadRunning = false
+local rpmWorkerRunning = false
 local lastPayload, lastStatusAt = {}, 0
 local unit = Config.Unit == 'mph' and 'mph' or 'kmh'
 local interval = math.max(50, tonumber(Config.UpdateInterval) or 100)
+local rpmInterval = math.max(16, tonumber(Config.RpmInterval) or 16)
 local idleInterval = math.max(interval, tonumber(Config.IdleInterval) or 750)
 local statusInterval = math.max(interval, tonumber(Config.StatusInterval) or 500)
 local status = {}
@@ -16,11 +18,32 @@ local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
 end
 
+local function startRpmWorker()
+    if rpmWorkerRunning then return end
+    rpmWorkerRunning = true
+    CreateThread(function()
+        while visible and currentVehicle ~= 0 do
+            local vehicle = currentVehicle
+            if not DoesEntityExist(vehicle) then break end
+            local rpm = status.engine
+                and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 10000 + 0.5) / 100 or 0
+            if lastPayload.rpm ~= rpm then
+                lastPayload.rpm = rpm
+                SendNUIMessage({ action = 'telemetry', rpm = rpm })
+            end
+            Wait(rpmInterval)
+        end
+        rpmWorkerRunning = false
+    end)
+end
+
 local function setVisible(value)
-    if visible == value then return end
-    visible = value
-    SendNUIMessage({ action = 'visibility', visible = value })
-    if not value then lastPayload = {} end
+    if visible ~= value then
+        visible = value
+        SendNUIMessage({ action = 'visibility', visible = value })
+        if not value then lastPayload = {} end
+    end
+    if value then startRpmWorker() end
 end
 
 local function resetBelt()
@@ -67,9 +90,7 @@ local function sendConfig()
         bottom = math.max(0, tonumber(Config.Position.bottom) or 28),
         safeZone = (1 - safeZone) / 2,
         accent = Config.Accent,
-        maxRpm = tonumber(Config.MaxRpm) or 9000,
-        fuelEnabled = Config.Fuel.enabled,
-        lowFuel = Config.Fuel.low
+        maxRpm = tonumber(Config.MaxRpm) or 9000
     })
 end
 
@@ -141,21 +162,11 @@ CreateThread(function()
 
         if shouldShow then
             local now = GetGameTimer()
-            if next(status) == nil or now < lastStatusAt or now - lastStatusAt >= statusInterval then
-                local engine = GetIsVehicleEngineRunning(vehicle)
+            status.engine = GetIsVehicleEngineRunning(vehicle)
+            if status.engineWarning == nil or now < lastStatusAt or now - lastStatusAt >= statusInterval then
                 local _, lights, highBeams = GetVehicleLightsState(vehicle)
-                local fuel = -1
-                if Config.Fuel.enabled then
-                    local ok, value = pcall(Config.ReadFuel, vehicle)
-                    -- Unknown fuel stays unknown rather than incorrectly showing an empty tank.
-                    if ok and type(value) == 'number' and value > -math.huge and value < math.huge then
-                        fuel = math.floor(clamp(value / math.max(1, Config.Fuel.capacity) * 100, 0, 100) + 0.5)
-                    end
-                end
-                status.engine = engine
-                status.engineWarning = GetVehicleEngineHealth(vehicle) < 350
+                status.engineWarning = GetVehicleEngineHealth(vehicle) < 1000
                 status.lights = highBeams == 1 and 2 or (lights == 1 and 1 or 0)
-                status.fuel = fuel
                 lastStatusAt = now
             end
 
@@ -163,12 +174,10 @@ CreateThread(function()
             local gear = status.engine and GetVehicleCurrentGear(vehicle) or 0
             local reversing = speed > 0.5 and GetEntitySpeedVector(vehicle, true).y < -0.5
             payload.speed = math.floor(speed * (unit == 'mph' and 2.2369362921 or 3.6) + 0.5)
-            payload.rpm = status.engine and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 1000 + 0.5) / 10 or 0
             payload.gear = reversing and 'R' or ((not status.engine or gear == 0) and 'N' or tostring(gear))
             payload.engine = status.engine
             payload.engineWarning = status.engineWarning
             payload.lights = status.lights
-            payload.fuel = status.fuel
             payload.belt = belted
             payload.beltAvailable = beltAvailable
             -- Send deltas only; a stationary car generates no repeated NUI updates.
