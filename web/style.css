@@ -22,10 +22,10 @@ body { user-select: none; }
 .hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 360px; height: 320px; transform: scale(var(--scale)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
 .indicators { position: absolute; inset: 0; }
 .indicator { position: absolute; display: flex; color: #9298a0; opacity: .65; }
-/* Unboxed icons follow the outside of the left arc; positions stay fixed on bikes. */
-#engine { left: 12px; top: 32px; }
-#belt { left: -15px; top: 81px; }
-#lights { left: -24px; top: 139px; }
+/* Icon centers share a 174px radius, spaced 20 degrees apart. */
+#engine { left: 13.71px; top: 35.15px; }
+#belt { left: -16.51px; top: 87.49px; }
+#lights { left: -27px; top: 147px; }
 .indicator svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 /* Static outlines preserve contrast over bright scenery without filter layers. */
 .icon-outline { stroke: #101114; stroke-width: 3.8; opacity: .9; }
@@ -44,12 +44,10 @@ body { user-select: none; }
 .tick.major { stroke-opacity: .65; stroke-width: 1.5; }
 .tick-label { fill: #c4c9ce; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
 .tick-label.red { fill: var(--danger); }
-.speed-block { position: absolute; top: 108px; width: 100%; text-align: center; text-shadow: 0 2px 12px #101114; }
+.speed-block { position: absolute; top: 108px; width: 100%; text-align: center; text-shadow: 0 1px 2px #0009; }
 .speed { margin: 1px 0 0; height: 82px; line-height: 82px; font-size: 79px; font-weight: 700; letter-spacing: -4px; padding-right: 4px; }
 .unit { display: block; font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #e0e3e8; margin-top: 5px; padding-left: 3px; }
 .gear-block { position: absolute; top: 230px; width: 100%; display: flex; align-items: center; justify-content: center; }
 .gear { font-size: 21px; font-weight: 600; line-height: 30px; min-width: 30px; text-align: center; color: var(--accent); }
-
-
 .indicator.damaged { color: var(--danger); opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .rpm-arc { transition: none; } }

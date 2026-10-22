@@ -7,7 +7,7 @@
       "scenario": "hidden",
       "wall_seconds": 3.007,
       "rpm_animation_callbacks": 0,
-      "TaskDuration_ms_per_second": 0.227,
+      "TaskDuration_ms_per_second": 0.354,
       "ScriptDuration_ms_per_second": 0.0,
       "LayoutDuration_ms_per_second": 0.0,
       "RecalcStyleDuration_ms_per_second": 0.0,
@@ -18,7 +18,7 @@
       "scenario": "stable",
       "wall_seconds": 3.007,
       "rpm_animation_callbacks": 0,
-      "TaskDuration_ms_per_second": 0.082,
+      "TaskDuration_ms_per_second": 0.09,
       "ScriptDuration_ms_per_second": 0.0,
       "LayoutDuration_ms_per_second": 0.0,
       "RecalcStyleDuration_ms_per_second": 0.0,
@@ -27,25 +27,25 @@
     },
     {
       "scenario": "rpm_only",
-      "wall_seconds": 3.015,
+      "wall_seconds": 3.007,
       "rpm_animation_callbacks": 175,
-      "TaskDuration_ms_per_second": 54.85,
-      "ScriptDuration_ms_per_second": 11.862,
+      "TaskDuration_ms_per_second": 39.66,
+      "ScriptDuration_ms_per_second": 8.426,
       "LayoutDuration_ms_per_second": 0.0,
-      "RecalcStyleDuration_ms_per_second": 10.473,
+      "RecalcStyleDuration_ms_per_second": 7.29,
       "LayoutCount": 0,
       "RecalcStyleCount": 174
     },
     {
       "scenario": "driving",
-      "wall_seconds": 3.011,
+      "wall_seconds": 3.007,
       "rpm_animation_callbacks": 176,
-      "TaskDuration_ms_per_second": 53.195,
-      "ScriptDuration_ms_per_second": 10.382,
-      "LayoutDuration_ms_per_second": 2.221,
-      "RecalcStyleDuration_ms_per_second": 9.776,
-      "LayoutCount": 30,
-      "RecalcStyleCount": 176
+      "TaskDuration_ms_per_second": 43.524,
+      "ScriptDuration_ms_per_second": 9.428,
+      "LayoutDuration_ms_per_second": 2.054,
+      "RecalcStyleDuration_ms_per_second": 7.721,
+      "LayoutCount": 29,
+      "RecalcStyleCount": 175
     }
   ]
 }

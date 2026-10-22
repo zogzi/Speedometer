@@ -39,7 +39,14 @@ function GetVehicleFuelLevel() fuelReads = fuelReads + 1; return car.fuel end
 function GetVehicleEngineHealth() return car.health end
 function GetEntitySpeed() speedReads = speedReads + 1; return car.speed end
 function GetVehicleCurrentGear() gearReads = gearReads + 1; return car.gear end
-function GetEntitySpeedVector() vectorReads = vectorReads + 1; return { y = car.velocityY } end
+local vectorMeta = { __len = function(v) return math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z) end }
+function GetEntitySpeedVector()
+    vectorReads = vectorReads + 1
+    if car.motionVector then return setmetatable(car.motionVector, vectorMeta) end
+    -- Keep the scalar magnitude and direction fixture physically consistent.
+    local y = math.max(-car.speed, math.min(car.speed, car.velocityY))
+    return setmetatable({ x = math.sqrt(math.max(0, car.speed*car.speed-y*y)), y = y, z = 0 }, vectorMeta)
+end
 function GetVehicleCurrentRpm() rpmReads = rpmReads + 1; return car.rpm end
 function DisableControlAction(group, control, disable)
     assert(group == 0 and control == 75 and disable == true, 'exit blocking must use the player control group')
@@ -106,10 +113,11 @@ check(payload.beltAvailable and payload.belt == false, 'seatbelt begins unfasten
 local sent = count('telemetry')
 local reads = fuelReads
 local previousSpeedReads, previousRpmReads, previousLightReads = speedReads, rpmReads, lightReads
+local previousVectorReads = vectorReads
 step(10000)
-check(count('telemetry') == sent and fuelReads == 0 and speedReads - previousSpeedReads == 100
+check(count('telemetry') == sent and fuelReads == 0 and speedReads == previousSpeedReads and vectorReads - previousVectorReads == 100
     and rpmReads - previousRpmReads == 100 and lightReads - previousLightReads == 20,
-    'steady state: combined RPM/speed 100 ms, lights 500 ms, zero fuel reads or repeated messages')
+    'steady driving: one vector read per 100 ms, no redundant speed reads, lights 500 ms, no repeated messages')
 car.speed = 20
 step(100)
 payload = latest('telemetry')
@@ -270,6 +278,31 @@ step(500)
 check(classReads == 1 and vectorReads > 0 and gearReads > 0,
     'moving vehicle resumes gear/vector reads without repeated class queries')
 
+fresh(nil, { speed = 13, velocityY = 4, motionVector = { x = 3, y = 4, z = 12 } })
+check(ui.speed == 47 and ui.gear == '3', 'speed includes sideways and vertical motion, not just forward velocity')
+local scalarBefore, vectorsBefore = speedReads, vectorReads
+step(1000)
+check(speedReads == scalarBefore and vectorReads - vectorsBefore == 10,
+    'moving vehicles reuse one vector native for speed and reverse each tick')
+car.motionVector.y = -4
+step(100)
+check(ui.speed == 47 and ui.gear == 'R', 'reverse retains full 3D speed magnitude')
+car.speed, car.velocityY, car.motionVector = 0, 0, nil
+step(100)
+scalarBefore, vectorsBefore = speedReads, vectorReads
+step(1000)
+check(speedReads - scalarBefore == 10 and vectorReads == vectorsBefore and ui.speed == 0,
+    'stopping returns to scalar-only sampling on the next tick')
+car.speed, car.velocityY = 20, 20
+step(100)
+check(ui.speed == 72 and vectorReads == vectorsBefore + 1,
+    'acceleration is detected at the existing cadence without an extra waiting interval')
+car.vehicle, car.speed, car.velocityY = 20, 0, 0
+scalarBefore, vectorsBefore = speedReads, vectorReads
+step(100)
+check(ui.speed == 0 and speedReads == scalarBefore + 1 and vectorReads == vectorsBefore,
+    'vehicle changes clear the cached motion state before sampling')
+
 fresh(nil, { dead = true })
 car.dead = false
 step(750)
@@ -278,9 +311,9 @@ check(latest('visibility').visible and classReads == 1,
 
 for _, mode in ipairs({ 0, 1, 2 }) do
     fresh(nil, { lights = mode > 0 and 1 or 0, beams = mode == 2 and 1 or 0 })
-    local oldMessages, oldLightReads, oldSpeedReads = count('telemetry'), lightReads, speedReads
+    local oldMessages, oldLightReads, oldMotionReads = count('telemetry'), lightReads, vectorReads
     step(2000)
-    check(lightReads - oldLightReads == 4 and speedReads - oldSpeedReads == 20
+    check(lightReads - oldLightReads == 4 and vectorReads - oldMotionReads == 20
         and count('telemetry') == oldMessages and #tasks == 1,
         'steady light mode ' .. mode .. ' keeps 2-Hz light polling, zero repeated NUI updates, no extra worker')
 end
@@ -313,7 +346,7 @@ for i = 1, 100 do
     car.rpm, car.speed = 0.2 + (i % 70) / 100, i
     step(100)
 end
-check(rpmReads == 101 and speedReads == 101 and count('telemetry') - beforeMessages == 100,
+check(rpmReads == 101 and speedReads == 1 and vectorReads == 101 and count('telemetry') - beforeMessages == 100,
     'changing speed and RPM share at most one telemetry packet per 100-ms tick')
 car.paused = true
 step(100)
@@ -343,9 +376,17 @@ check(ui.rpm == 63 and rpmReads == previousRpmReads + 1 and #tasks == 1,
     'shared sampler safely recovers after a vehicle temporarily disappears')
 
 fresh(function() Config.UpdateInterval = 1 end)
-previousSpeedReads = speedReads
+previousVectorReads = vectorReads
 step(1000)
-check(speedReads - previousSpeedReads == 20, 'configured active interval is safely bounded to 50 ms')
+check(vectorReads - previousVectorReads == 20, 'configured active interval is safely bounded to 50 ms')
+
+fresh()
+car.exists = false
+step(100)
+car.exists, car.class = true, 15
+step(750)
+check(not latest('visibility').visible and classReads == 2,
+    'a disappeared entity invalidates its class cache before its handle can be reused')
 
 fresh()
 for _ = 1, 200 do

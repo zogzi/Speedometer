@@ -1,6 +1,6 @@
 # Source and visual review
 
-Reviewed 2026-10-22 against the sources below. Runtime version: 1.5.0. The source comparison remains applicable; Lua polling is unchanged.
+Reviewed 2026-10-22 against the sources below. Runtime version: 1.6.0. The source comparison remains applicable; the polling interval is unchanged, with one redundant motion native removed per driving tick.
 
 The resource follows the relevant FiveM and browser guidance and has a small work budget. That does not establish a universal “fully optimized” state or prove a lower in-game cost than another HUD. Real FiveM profiling is still required to locate any remaining expensive native calls or CEF rendering work.
 
@@ -23,7 +23,7 @@ Compared the actual client source at these revisions, not advertised resmon scre
 - [qb-hud client](https://github.com/qbcore-framework/qb-hud/blob/65d102aeb0de7e2ab08319bc619e85d4c4f55334/client.lua), [default config](https://github.com/qbcore-framework/qb-hud/blob/65d102aeb0de7e2ab08319bc619e85d4c4f55334/config.lua).
 - [ps-hud client](https://github.com/Project-Sloth/ps-hud/blob/e28fbfd87135c94bcc95b54f3526c65b21208a1a/client.lua). This shares ancestry with qb-hud, so it is not an independent performance benchmark.
 
-| Behavior | zz-speedomter 1.5.0 | Reviewed qb-hud | Reviewed ps-hud |
+| Behavior | zz-speedomter 1.6.0 | Reviewed qb-hud | Reviewed ps-hud |
 | --- | --- | --- | --- |
 | Vehicle telemetry cadence | 100 ms by default | 500 ms with default `isChangeFPSChecked = true`; 50 ms with it disabled | 500 ms in logged-in HUD loop |
 | Unchanged data | No telemetry packet | Vehicle packet skipped | Vehicle packet skipped |
@@ -38,11 +38,15 @@ Seatbelt accounting matters too: qb-hud listens to seatbelt events, while [qb-sm
 
 Keep `Config.UpdateInterval = 100` for the current response. A value of `200` halves the telemetry polling rate but adds response delay. A value of `500` matches the reviewed default HUD polling rate and makes readings visibly less responsive. Interpolation continues at any setting; it cannot invent changes that have not yet been sampled. These are tuning options, not evidence of a particular CPU time.
 
+## Additional runtime review in 1.6.0
+
+The earlier client separately read scalar speed and local velocity on each moving tick. Version 1.6.0 reuses the velocity magnitude for speed, removing 10 native calls per second at the default interval while retaining scalar-only parked checks. It does not reduce sample frequency or omit sideways/vertical speed. Tests also verify stopping, restarting, reverse and cache invalidation after entity disappearance. See [PERFORMANCE.md](PERFORMANCE.md) for the measured call budget and native references.
+
 ## Visual review
 
 Checked the real page against bright and dark backgrounds, compact/default/enlarged scales, 720p through 4K, warning states, and an embedded transparent iframe. Speed and units remain central; gear and curved side icons are unboxed. No ZZ branding, SPEED/GEAR descriptions, fuel bar or bottom RPM caption is present.
 
-Version 1.5.0 increases the dial from 280 to 320 displayed pixels and icons from 17.5 to 26 pixels at Scale 1.0. Total footprint is 360 × 320 pixels. A neutral silver-white/charcoal palette replaces the green dial accent; engine damage, belt warnings and high beams retain semantic colors.
+Version 1.5.0 increases the dial from 280 to 320 displayed pixels and icons from 17.5 to 26 pixels at Scale 1.0. Total footprint is 360 × 320 pixels. Version 1.6.0 places the icon centers on a common radius with equal angular spacing, contains the shading within the track, and uses a compact text shadow. A neutral silver-white/charcoal palette replaces the green dial accent; engine damage, belt warnings and high beams retain semantic colors.
 
 One concrete issue was found: thin green icons had weak contrast over bright backgrounds. Version 1.4.1 adds a static dark SVG outline behind each icon. It adds no animation loop, background panel, blur or filter. Engine green/red and high-beam blue remain intact. [Bright preview](docs/preview-bright.png) and [dark preview](docs/preview-dark.png) use synthetic backgrounds, not GTA screenshots. Day/night readability still needs an in-game look.
 
@@ -56,4 +60,4 @@ The earlier spring was tuned for 16-ms sampling and nearly reached each target b
 
 This harness isolates DOM/animation work. Timings include the harness and are specific to this cloud machine; they are not FiveM Lua milliseconds, GTA frame times, CEF/GPU totals or a qb-hud benchmark. No performance threshold is asserted. In-game profiling should use the same car, game frame cap, belt state and headlight state, with both the resource profiler and NUI developer tools where appropriate.
 
-The existing 65 Lua checks cover telemetry budgets and lifecycle behavior. All 24 browser regression tests pass after the size and smoothing changes, including engine colors, layouts, smoothness, settled/hidden cancellation and the grey-canvas regression. See [PERFORMANCE.md](PERFORMANCE.md) for exact work counts and the in-game measurement procedure.
+The 72 Lua checks cover telemetry budgets and lifecycle behavior. All 24 browser regression tests pass after the size and smoothing changes, including engine colors, layouts, smoothness, settled/hidden cancellation and the grey-canvas regression. See [PERFORMANCE.md](PERFORMANCE.md) for exact work counts and the in-game measurement procedure.

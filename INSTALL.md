@@ -77,6 +77,8 @@ Version 1.4.1 adds static dark outlines to the side icons for bright-background 
 
 Version 1.5.0 increases the dial and icon size and retunes RPM interpolation for the existing 100-ms readings. Replace the complete `web` folder and `fxmanifest.lua`, then restart. Keep your current `client.lua` and polling settings from 1.4.x; no faster sampler is needed. Smooth motion adds roughly 110 ms of smoothing delay during a steady RPM ramp, in addition to sampling delay. Set `Config.Accent = '#e7edf0'` in an older custom config to use the new silver-white palette; an old green accent remains a valid custom override.
 
+Version 1.6.0 also optimizes speed/direction sampling and clears cached class data when a vehicle disappears. Replace **`client.lua`**, `fxmanifest.lua` and the complete `web` folder together. Your existing 1.5.0 config remains compatible; size, neutral colors and RPM smoothing retain their settings.
+
 ## Troubleshooting
 
 | Symptom | Check |

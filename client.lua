@@ -2,6 +2,7 @@ local RESOURCE = GetCurrentResourceName()
 local visible, nuiReady, suppressed = false, false, false
 local currentVehicle, beltVehicle = 0, 0
 local observedVehicle, vehicleClass = 0, -1
+local moving = false
 local belted, beltAvailable = false, false
 local beltThreadRunning = false
 local lastPayload, lastStatusAt = {}, 0
@@ -106,7 +107,7 @@ CreateThread(function()
         local vehicle = GetVehiclePedIsIn(ped, false)
         local exists = vehicle ~= 0 and DoesEntityExist(vehicle)
         -- Vehicle class is fixed for an entity; do not query it every sample.
-        if vehicle ~= observedVehicle then
+        if vehicle ~= observedVehicle or not exists then
             observedVehicle = vehicle
             vehicleClass = -1
         end
@@ -119,6 +120,7 @@ CreateThread(function()
         if nextVehicle ~= currentVehicle then
             resetBelt()
             currentVehicle = nextVehicle
+            moving = false
             lastPayload, status, lastStatusAt = {}, {}, 0
         end
 
@@ -144,9 +146,18 @@ CreateThread(function()
                 lastStatusAt = now
             end
 
-            local speed = GetEntitySpeed(vehicle)
+            -- While moving, the reverse-detection vector already contains speed.
+            -- Reuse its magnitude instead of making a second native call. At rest,
+            -- retain the scalar-only probe; read the vector when movement starts.
+            local velocity = moving and GetEntitySpeedVector(vehicle, true) or nil
+            local speed = velocity and #velocity or GetEntitySpeed(vehicle)
+            if not velocity and speed > 0.5 then
+                velocity = GetEntitySpeedVector(vehicle, true)
+                speed = #velocity
+            end
+            moving = speed > 0.5
             local gear = status.engine and GetVehicleCurrentGear(vehicle) or 0
-            local reversing = speed > 0.5 and GetEntitySpeedVector(vehicle, true).y < -0.5
+            local reversing = moving and velocity.y < -0.5
             -- Half-percent detail avoids sending idle RPM jitter. Interpolation
             -- stays in the browser; RPM shares one packet with speed and gear.
             payload.rpm = status.engine
