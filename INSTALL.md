@@ -65,6 +65,12 @@ If you already use a speedometer, disable its speedometer component in that reso
 
 Fuel works automatically when your fuel script synchronizes FiveM's native vehicle fuel level. If its fuel value differs or the meter shows `—`, see the **Fuel integration** section in `README.md` for the provider function and full-tank capacity setting.
 
+## Updating from an older version
+
+Replace `fxmanifest.lua`, `client.lua`, and the **whole `web` folder** together, then run `restart zz-speedomter`. Keep your custom `config.lua`; the smaller 280 × 300 base layout also applies with an existing `Config.Scale = 1.0`. Set `Config.Scale = 0.85` if you want it smaller still. The old `Config.MaxRpm` setting is no longer used because the numeric RPM dial was removed.
+
+Version 1.1.0 removes the dark color scheme responsible for the grey embedded-browser canvas. Do not mix old CSS or HTML with the updated files. If the previous screen persists after restarting, reconnect and confirm that only the updated copy of the resource is running.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -75,5 +81,6 @@ Fuel works automatically when your fuel script synchronizes FiveM's native vehic
 | Cannot exit the vehicle | Press B to unbuckle; inspect other seatbelt resources if the problem remains. |
 | Belt key does nothing | Check the player's saved FiveM key mapping; it overrides the configured default. |
 | Fuel is wrong | Confirm the provider and `Config.Fuel.capacity`; start a custom provider before this HUD. |
+| Grey screen over the game | Replace the complete `web` folder with version 1.1.0 or newer; restart the resource and reconnect if necessary. |
 
 For performance verification, open the client **F8 console** and run `resmon 1`. Compare `zz-speedomter` while on foot, driving, and belted. Run `resmon 0` when finished. The resource is designed to minimize work, but actual CPU time and visual integration must be checked on your server and hardware.

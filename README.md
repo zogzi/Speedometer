@@ -2,7 +2,9 @@
 
 A standalone, Forza-inspired FiveM vehicle HUD. No ESX, QBCore, database, npm build, CDN, custom fonts, or server-side scripts required. All UI assets ship with the resource.
 
-![zz-speedomter browser preview](docs/preview.png)
+![Compact zz-speedomter HUD, rendered with mocked FiveM messages](docs/preview.png)
+
+Version 1.1.0 fixes the opaque grey canvas in embedded Chromium and replaces the earlier layout with a smaller, quieter HUD. The NUI contains no demo page or browser preview mode.
 
 See [INSTALL.md](INSTALL.md) for the step-by-step server owner's guide and [PERFORMANCE.md](PERFORMANCE.md) for the local optimization and visual review, including what still needs in-game validation.
 
@@ -25,7 +27,7 @@ The folder may have another name; use that name in `ensure` and in integration e
 
 - Digital speed, KM/H or MPH, gear, reverse detection, and normalized RPM arc with a redline state.
 - Native fuel level, low-fuel warning, engine damage warning, headlights and high-beam indicators.
-- Optional seatbelt toggle with exit blocking. Bikes have no belt indicator.
+- Optional seatbelt toggle with exit blocking. The belt icon appears only while unfastened; bikes have no belt indicator. Engine damage and active lights appear only when relevant.
 - Driver-only display by default; hides on foot, on death, in unsupported vehicle classes, and in the pause menu.
 - Safe-zone-aware placement, configurable size and accent color, transparent NUI, and no input focus capture.
 
@@ -37,7 +39,6 @@ Edit `config.lua` and restart the resource to apply configuration changes:
 | `Scale` | `1.0` | HUD size, clamped to 0.65–1.5 |
 | `Position` | right 32, bottom 28 | Pixel offset, plus GTA safe-zone inset |
 | `Accent` | `'#62f5bb'` | Six-digit hex accent color |
-| `MaxRpm` | `9000` | Dial scale, not an engine tuning value |
 | `ShowPassenger` | `false` | Also display for passengers |
 | `HideWhenPaused` | `true` | Hide when the pause menu is open |
 | `UpdateInterval` | `100` | Active telemetry interval in milliseconds; minimum 50 |
@@ -55,7 +56,7 @@ Edit `config.lua` and restart the resource to apply configuration changes:
 
 The seatbelt feature blocks normal vehicle exit only. It does **not** change crash physics, implement ejection, provide damage protection, or make passengers invulnerable. Belt state resets on vehicle change, exit, or death. If another resource manages seatbelts, set `Config.Seatbelt.enabled = false` to avoid conflicting controls.
 
-GTA supplies normalized RPM, so the numeric RPM display is a visual estimate based on `MaxRpm`. Neutral is shown when the engine is off or the native gear is zero; reverse is detected from backward motion. This is not a transmission simulation. Boats, aircraft, bicycles, and trains are excluded by default.
+GTA supplies normalized RPM, which drives the arc without a numeric RPM estimate or dial labels. Neutral is shown when the engine is off or the native gear is zero; reverse is detected from backward motion. This is not a transmission simulation. Boats, aircraft, bicycles, and trains are excluded by default.
 
 ## Fuel integration
 
@@ -85,15 +86,17 @@ local belted = exports['zz-speedomter']:IsSeatbeltOn()
 
 ## Performance and validation
 
-The client polls telemetry at 10 Hz by default, rounds speed and RPM, and sends only changed fields to NUI. Telemetry and status buffers are reused; message objects are created only when data changes. Fuel, engine health, and lights are read at 2 Hz. On foot, the main loop sleeps for 750 ms. The browser has no animation loop, polling timer, or network dependency during normal gameplay. Repeated display values do not rewrite DOM text or attributes. SVG ticks are constructed once and only rebuilt if the RPM scale changes. A frame loop is necessary **only while belted with exit blocking enabled**, because FiveM control suppression lasts one frame.
+The client polls telemetry at 10 Hz by default, rounds speed and RPM, and sends only changed fields to NUI. Telemetry and status buffers are reused; message objects are created only when data changes. Fuel, engine health, and lights are read at 2 Hz. On foot, the main loop sleeps for 750 ms. The browser has no animation loop, polling timer, or network dependency during normal gameplay. Repeated display values do not rewrite DOM text or attributes. The arc consists of static SVG elements; no ticks or labels are generated. A frame loop is necessary **only while belted with exit blocking enabled**, because FiveM control suppression lasts one frame.
 
 The NUI startup handshake has a two-second request timeout and up to four retries, with increasing delays. Those timers stop after success; they are separate from vehicle updates.
 
 No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server, hardware, frame rate, and other resources. Use `resmon 1` in FiveM to check this resource on foot, driving, and belted. Lower `UpdateInterval` values increase native calls and NUI traffic.
 
-### Browser preview
+### FiveM-only NUI
 
-Open `web/index.html?preview` in a browser, or serve the `web` folder with any static server and append `?preview` to its address. The preview includes cruise/redline/parked presets, speed and RPM sliders, and unit/belt/light controls. Its presentation and controls never appear inside FiveM. Opening the page without `?preview` keeps the HUD hidden until game messages arrive.
+The NUI activates only when FiveM provides `GetParentResourceName`. Opening the HTML in a normal browser, including with `?preview`, stays blank. There are no full-screen presentation backgrounds, forms, or demo controls. Tests mock the FiveM interface externally; that harness is not part of the runtime resource.
+
+The default footprint is 280 × 300 pixels, down from 320 × 374. Only the local dial shading and compact fuel/warning indicators paint a background. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
 
 ### Automated checks
 
@@ -105,7 +108,7 @@ lua5.4 tests/client_spec.lua
 # Alternative on Linux with Python and liblua5.4 installed:
 python tests/run_lua_tests.py
 
-# Requires Python Playwright and Chromium for development only:
+# Requires Python Playwright, Pillow, and Chromium for development only:
 python tests/test_ui.py
 ```
 

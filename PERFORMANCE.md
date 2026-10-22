@@ -3,9 +3,9 @@
 ## Verified locally
 
 - **48 checks in Lua 5.4**, running the real client script with mocked FiveM natives and a deterministic scheduler.
-- **12 browser tests in Chromium**, using the real HTML/CSS/JavaScript and NUI message protocol.
+- **15 browser tests in Chromium**, using the real HTML/CSS/JavaScript and NUI message protocol.
 - JavaScript syntax validation.
-- Visual inspection against dark preview and synthetic bright backgrounds. These are browser renders, not GTA screenshots.
+- Embedded-frame pixel regression for the grey canvas, plus visual inspection against dark and synthetic bright backgrounds. These are browser renders, not GTA screenshots.
 
 ## Work budget at default settings
 
@@ -19,7 +19,9 @@
 | Unbelted | No per-frame seatbelt worker |
 | Belted, exit blocking enabled | Per-frame exit-control suppression, required by FiveM |
 | Browser idle | No telemetry polling timer or animation loop |
-| Repeated configuration | Static SVG dial retained when its RPM scale stays the same |
+| Repeated configuration | Static SVG arcs retained; no generated ticks or numeric RPM labels |
+| Embedded, hidden HUD | Every background pixel matches the host scene before and after hiding |
+| Embedded, visible HUD | Sampled pixels outside the HUD remain identical to the host scene |
 | 1,000 identical browser updates | Zero DOM mutations; repeating visibility/configuration also leaves the DOM unchanged |
 | 100-second changing-telemetry simulation | One telemetry packet per active tick; no additional worker threads |
 | 200 rapid belt toggle pairs | One on-demand worker, which exits without applying an exit block |
@@ -34,10 +36,14 @@ Text, attributes, hidden state, and configuration styles are written only when t
 
 ## Visual checks
 
-- Transparent overlay with a feathered dark dial, legible tabular speed digits, restrained mint accent, and distinct amber/red/blue warning states.
-- Subtle dark backing for status icons and fuel to improve readability against bright scenes.
+- FiveM-only transparent overlay: removed browser demo markup, styles, and activation logic.
+- Removed the forced dark color scheme, which reproduced an opaque `(18,18,18)` canvas in an embedded frame despite transparent root/body CSS. After the fix, the test's `(33,66,99)` host background remains unchanged.
+- Compact 280 × 300 pixel footprint, approximately 12.5% narrower and 20% shorter than 320 × 374 at the same configured scale.
+- Kept speed, unit, gear, a simple RPM arc, and a thin fuel meter. Removed branding, tick labels, numeric RPM, and redundant captions.
+- Engine damage, unfastened belt, and active lights appear contextually; the entire icon group hides when nothing needs attention.
+- Feathered shading and compact fuel/warning backing improve readability without any full-screen layer.
 - Layout tested at 720p, 1080p, ultrawide 1080p, and 4K.
-- Scale range 0.65–1.5 tested at 720p with a 10% safe-zone inset. Speed and gear areas remain separate, and branding does not overlap status icons.
+- Scale range 0.65–1.5 tested at 720p with a 10% safe-zone inset. Speed, gear, warning icons, and fuel remain separate.
 - Redline color checked after its transition settles; seatbelt/fuel visibility and reduced-motion support included.
 - Safe-zone placement refreshes after leaving the pause menu.
 

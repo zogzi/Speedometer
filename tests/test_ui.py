@@ -1,12 +1,14 @@
 """Exercise the shipped UI in Chromium. Requires Python Playwright, not npm."""
 import functools
 import http.server
+import io
 import os
 from pathlib import Path
 import shutil
 import threading
 import unittest
 
+from PIL import Image
 from playwright.sync_api import sync_playwright
 
 WEB = Path(__file__).resolve().parents[1] / "web"
@@ -45,7 +47,15 @@ class HudTests(unittest.TestCase):
         self.page = self.browser.new_page(viewport={"width": 1920, "height": 1080})
         self.errors = []
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
-        self.page.goto(self.url)
+        self.page.add_init_script("window.GetParentResourceName = () => 'zz-speedomter'")
+        self.page.route("https://zz-speedomter/ready", lambda route: route.fulfill(
+            status=200, content_type="application/json", body='{"ok":true}',
+            headers={"Access-Control-Allow-Origin": "*"}))
+        # Finish the initial handshake before a test replaces its route or reloads.
+        # Otherwise an old in-flight response can satisfy the next expectation.
+        with self.page.expect_response("https://zz-speedomter/ready") as ready:
+            self.page.goto(self.url)
+        self.assertTrue(ready.value.ok)
 
     def tearDown(self):
         self.page.close()
@@ -56,7 +66,7 @@ class HudTests(unittest.TestCase):
 
     def test_hidden_transparent_default_and_no_runtime_requests(self):
         self.assertTrue(self.page.locator("#hud").is_hidden())
-        self.assertTrue(self.page.locator("#preview").is_hidden())
+        self.assertEqual(self.page.locator("#preview").count(), 0)
         self.assertEqual(self.page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor"), "rgba(0, 0, 0, 0)")
         requests = []
         self.page.on("request", lambda request: requests.append(request.url))
@@ -68,17 +78,16 @@ class HudTests(unittest.TestCase):
         self.send(action="telemetry", speed=199, rpm=94, gear="4", fuel=12,
                   engine=True, engineWarning=False, lights=2, belt=True, beltAvailable=True)
         self.assertEqual(self.page.locator("#speed").inner_text(), "199")
-        self.assertEqual(self.page.locator("#rpm-value").inner_text(), "8.5")
         self.assertEqual(self.page.locator("#gear").inner_text(), "4")
         self.assertEqual(self.page.locator("#fuel-value").inner_text(), "12%")
-        self.assertTrue(self.page.locator("#fuel-warning").is_visible())
+        self.assertIn("low", self.page.locator("#fuel").get_attribute("class"))
         self.assertIn("redline", self.page.locator("#hud").get_attribute("class"))
         self.assertEqual(self.page.locator("#lights").get_attribute("aria-label"), "High beams on")
         self.send(action="telemetry", speed=202)
         self.assertEqual(self.page.locator("#gear").inner_text(), "4")
         self.assertEqual(self.page.locator("#fuel-value").inner_text(), "12%")
         self.send(action="telemetry", rpm=20, fuel=50, belt=False, engineWarning=True, lights=0)
-        self.assertTrue(self.page.locator("#fuel-warning").is_hidden())
+        self.assertNotIn("low", self.page.locator("#fuel").get_attribute("class"))
         self.assertNotIn("redline", self.page.locator("#hud").get_attribute("class"))
         self.assertEqual(self.page.locator("#engine").get_attribute("aria-label"), "Engine damaged")
         self.assertEqual(self.page.locator("#belt").get_attribute("aria-label"), "Seatbelt unfastened")
@@ -86,14 +95,12 @@ class HudTests(unittest.TestCase):
         self.assertTrue(self.page.locator("#hud").is_hidden())
 
     def test_config_and_safe_zone_layout(self):
-        self.send(action="config", unit="mph", maxRpm=12000, scale=1.2, right=40, bottom=35,
+        self.send(action="config", unit="mph", scale=1.2, right=40, bottom=35,
                   safeZone=.05, accent="#aabbcc", lowFuel=30, fuelEnabled=False)
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", rpm=50, beltAvailable=False)
         self.assertEqual(self.page.locator("#unit").inner_text(), "MPH")
-        self.assertEqual(self.page.locator("#rpm-value").inner_text(), "6.0")
-        self.assertEqual(self.page.locator(".tick-label").last.text_content(), "12")
-        self.assertEqual(self.page.locator("#ticks line").count(), 37)
+        self.assertEqual(self.page.locator("#ticks, #rpm-value").count(), 0)
         self.assertTrue(self.page.locator("#fuel").is_hidden())
         self.assertTrue(self.page.locator("#belt").is_hidden())
         self.assertEqual(self.page.locator("html").evaluate("e => getComputedStyle(e).getPropertyValue('--accent')"), "#aabbcc")
@@ -101,19 +108,17 @@ class HudTests(unittest.TestCase):
         self.assertAlmostEqual(box["x"] + box["width"], 1920 - 40 - 96, delta=1)
         self.assertAlmostEqual(box["y"] + box["height"], 1080 - 35 - 54, delta=1)
 
-    def test_repeated_config_does_not_rebuild_static_dial(self):
-        self.page.evaluate("window.originalTick = document.querySelector('#ticks line')")
-        self.send(action="config", maxRpm=9000)
-        self.send(action="config", maxRpm=9000, safeZone=.1)
-        self.assertTrue(self.page.evaluate("window.originalTick === document.querySelector('#ticks line')"))
-        self.send(action="config", maxRpm=12000)
-        self.assertFalse(self.page.evaluate("window.originalTick === document.querySelector('#ticks line')"))
+    def test_configuration_retains_the_static_dial(self):
+        self.page.evaluate("window.originalArc = document.querySelector('#rpm-arc')")
+        self.send(action="config", scale=1.2, safeZone=.1, accent="#abcdef")
+        self.assertTrue(self.page.evaluate("window.originalArc === document.querySelector('#rpm-arc')"))
+        self.assertEqual(self.page.locator(".dial circle").count(), 4)
 
     def test_duplicate_updates_do_not_mutate_the_dom(self):
         self.send(action="visibility", visible=True)
         telemetry = dict(action="telemetry", speed=124, rpm=52, gear="4", fuel=68,
                          engine=True, engineWarning=False, lights=1, belt=True, beltAvailable=True)
-        config = dict(action="config", unit="kmh", maxRpm=9000, scale=1,
+        config = dict(action="config", unit="kmh", scale=1,
                       right=32, bottom=28, safeZone=.05, accent="#62f5bb", fuelEnabled=True)
         self.send(**config)
         self.send(**telemetry)
@@ -140,7 +145,7 @@ class HudTests(unittest.TestCase):
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", fuel=-1, gear="<img>", speed=-20, rpm=999)
         self.assertEqual(self.page.locator("#fuel-value").inner_text(), "—")
-        self.assertTrue(self.page.locator("#fuel-warning").is_hidden())
+        self.assertNotIn("low", self.page.locator("#fuel").get_attribute("class"))
         self.assertEqual(self.page.locator("#speed").inner_text(), "0")
         self.assertEqual(self.page.locator("#gear").inner_text(), "N")
         self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "75 100")
@@ -149,23 +154,58 @@ class HudTests(unittest.TestCase):
         self.assertEqual(self.page.locator("#speed").inner_text(), "999")
         self.page.evaluate("window.postMessage(null, '*')")
 
-    def test_preview_controls_and_units(self):
-        self.page.goto(self.url + "/?preview")
-        self.assertTrue(self.page.locator("#preview").is_visible())
-        self.assertEqual(self.page.locator("#speed").inner_text(), "124")
-        self.page.locator('[data-preset="redline"]').click()
-        self.assertEqual(self.page.locator("#speed").inner_text(), "248")
-        self.assertTrue(self.page.locator("#fuel-warning").is_visible())
-        self.page.locator("#demo-unit").click()
-        self.assertEqual(self.page.locator("#speed").inner_text(), "154")
-        self.assertEqual(self.page.locator("#unit").inner_text(), "MPH")
-        self.page.locator('[data-preset="cruise"]').click()
-        self.assertEqual(self.page.locator("#speed").inner_text(), "77")
-        self.page.locator("#demo-belt").click()
-        self.assertEqual(self.page.locator("#belt").get_attribute("aria-label"), "Seatbelt unfastened")
-        self.page.locator('[data-preset="parked"]').click()
-        self.assertEqual(self.page.locator("#speed").inner_text(), "0")
-        self.assertEqual(self.page.locator("#gear").inner_text(), "N")
+    def test_outside_fivem_stays_inactive_even_with_preview_query(self):
+        outside = self.browser.new_page()
+        try:
+            outside.goto(self.url + "/?preview")
+            outside.evaluate("window.postMessage({action:'visibility',visible:true}, '*')")
+            self.assertTrue(outside.locator("#hud").is_hidden())
+            self.assertEqual(outside.locator("#preview, button, input").count(), 0)
+            self.assertEqual(outside.locator("html").evaluate("e => getComputedStyle(e).colorScheme"), "normal")
+        finally:
+            outside.close()
+
+    def test_contextual_indicators_hide_when_not_needed(self):
+        self.send(action="visibility", visible=True)
+        self.send(action="telemetry", engine=True, engineWarning=False, beltAvailable=True, belt=True, lights=0)
+        self.assertTrue(self.page.locator("#indicators").is_hidden())
+        self.send(action="telemetry", belt=False)
+        self.assertTrue(self.page.locator("#belt").is_visible())
+        self.assertTrue(self.page.locator("#engine").is_hidden())
+        self.assertTrue(self.page.locator("#lights").is_hidden())
+        self.send(action="telemetry", beltAvailable=False, lights=2, engineWarning=True)
+        self.assertTrue(self.page.locator("#belt").is_hidden())
+        self.assertTrue(self.page.locator("#engine").is_visible())
+        self.assertTrue(self.page.locator("#lights").is_visible())
+
+    def test_default_hud_is_compact(self):
+        self.send(action="visibility", visible=True)
+        box = self.page.locator("#hud").bounding_box()
+        self.assertLess(box["width"], 300)
+        self.assertLess(box["height"], 330)
+        self.assertEqual(self.page.locator(".wordmark, .overline, .rpm-caption, .tick-label").count(), 0)
+
+    def test_embedded_canvas_does_not_paint_over_the_game(self):
+        self.page.set_viewport_size({"width":1280, "height":720})
+        self.page.set_content(f'''<html style="color-scheme:normal"><body style="margin:0;background:rgb(33,66,99)">
+          <iframe src="{self.url}" style="position:fixed;inset:0;width:100%;height:100%;border:0;background:transparent"></iframe>
+        </body></html>''')
+        frame = self.page.frames[1]
+        frame.wait_for_selector("#hud", state="attached")
+        image = Image.open(io.BytesIO(self.page.screenshot())).convert("RGB")
+        self.assertEqual(image.getextrema(), ((33,33), (66,66), (99,99)),
+                         "The hidden embedded HUD must leave every background pixel unchanged")
+        frame.evaluate("""() => {
+            window.dispatchEvent(new MessageEvent('message', {data:{action:'visibility',visible:true}}));
+            window.dispatchEvent(new MessageEvent('message', {data:{action:'telemetry',speed:124,rpm:52,gear:'4',fuel:68,belt:true}}));
+        }""")
+        self.assertTrue(frame.locator("#hud").is_visible())
+        image = Image.open(io.BytesIO(self.page.screenshot())).convert("RGB")
+        for point in [(0,0), (640,360), (0,719), (1279,0), (1279,719)]:
+            self.assertEqual(image.getpixel(point), (33,66,99))
+        frame.evaluate("window.dispatchEvent(new MessageEvent('message', {data:{action:'visibility',visible:false}}))")
+        image = Image.open(io.BytesIO(self.page.screenshot())).convert("RGB")
+        self.assertEqual(image.getextrema(), ((33,33), (66,66), (99,99)))
 
     def test_nui_handshake_and_no_preview_in_game(self):
         self.page.add_init_script("window.GetParentResourceName = () => 'zz-speedomter'")
@@ -180,7 +220,7 @@ class HudTests(unittest.TestCase):
         self.page.goto(self.url + "/?preview")
         self.page.wait_for_timeout(100)
         self.assertEqual(replies, ["{}"])
-        self.assertTrue(self.page.locator("#preview").is_hidden())
+        self.assertEqual(self.page.locator("#preview").count(), 0)
         self.assertNotIn("preview-mode", self.page.locator("body").get_attribute("class") or "")
 
     def test_nui_startup_recovers_from_a_stalled_handshake(self):
@@ -235,9 +275,11 @@ class HudTests(unittest.TestCase):
                 speed = self.page.locator("#speed").bounding_box()
                 gear = self.page.locator(".gear-block").bounding_box()
                 self.assertLess(speed["y"] + speed["height"], gear["y"])
-                wordmark = self.page.locator(".wordmark").bounding_box()
-                icons = self.page.locator(".indicators").bounding_box()
-                self.assertLess(wordmark["x"] + wordmark["width"], icons["x"])
+                icons = self.page.locator("#indicators").bounding_box()
+                fuel = self.page.locator("#fuel").bounding_box()
+                self.assertLess(gear["y"] + gear["height"], icons["y"])
+                self.assertLess(icons["y"] + icons["height"], fuel["y"])
+
 
 
 if __name__ == "__main__":

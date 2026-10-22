@@ -5,18 +5,19 @@
   const hud = $('hud');
   const root = document.documentElement;
   const hasNui = typeof window.GetParentResourceName === 'function';
-  const preview = !hasNui && new URLSearchParams(location.search).has('preview');
+  // This resource has no browser demo or query-string activation path.
+  if (!hasNui) return;
   const state = {
-    speed: 0, rpm: 0, gear: 'N', engine: false, engineWarning: false,
+    speed: 0, rpm: 0, gear: 'N', engineWarning: false,
     lights: 0, fuel: -1, belt: false, beltAvailable: true,
   };
-  const config = { unit: 'kmh', maxRpm: 9000, lowFuel: 20, fuelEnabled: true };
+  const config = { unit: 'kmh', lowFuel: 20, fuelEnabled: true };
   const telemetryKeys = Object.keys(state);
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const number = (value, fallback) => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   const refs = Object.fromEntries([
-    'speed', 'unit', 'gear', 'rpm-arc', 'rpm-value', 'engine', 'belt', 'lights',
-    'fuel', 'fuel-value', 'fuel-fill', 'fuel-warning',
+    'speed', 'unit', 'gear', 'rpm-arc', 'engine', 'belt', 'lights', 'indicators',
+    'fuel', 'fuel-value', 'fuel-fill',
   ].map((id) => [id, $(id)]));
 
   // Avoid replacing text nodes or dirtying attributes when the display is unchanged.
@@ -37,59 +38,25 @@
     if (root.style.getPropertyValue(name) !== css) root.style.setProperty(name, css);
   }
 
-  function drawTicks() {
-    const ns = 'http://www.w3.org/2000/svg';
-    const group = $('ticks');
-    const fragment = document.createDocumentFragment();
-    for (let i = 0; i <= 36; i++) {
-      const angle = (135 + i * 7.5) * Math.PI / 180;
-      const major = i % 4 === 0;
-      const point = (radius) => [160 + Math.cos(angle) * radius, 160 + Math.sin(angle) * radius];
-      const start = point(major ? 116 : 120);
-      const end = point(125);
-      const line = document.createElementNS(ns, 'line');
-      line.setAttribute('x1', start[0]); line.setAttribute('y1', start[1]);
-      line.setAttribute('x2', end[0]); line.setAttribute('y2', end[1]);
-      line.setAttribute('class', `tick${major ? ' major' : ''}`);
-      fragment.append(line);
-      if (major) {
-        const [x, y] = point(103);
-        const text = document.createElementNS(ns, 'text');
-        text.setAttribute('x', x); text.setAttribute('y', y);
-        text.setAttribute('class', `tick-label${i >= 32 ? ' red' : ''}`);
-        text.textContent = String(Math.round(i / 36 * config.maxRpm / 1000 * 10) / 10);
-        fragment.append(text);
-      }
-    }
-    group.replaceChildren(fragment);
-  }
-
-  function indicator(element, active, warning, high, label) {
-    element.classList.toggle('active', active);
-    element.classList.toggle('warning', warning);
-    element.classList.toggle('high', high);
-    attribute(element, 'aria-label', label);
-  }
-
   function render(delta) {
     if ('speed' in delta) text(refs.speed, String(clamp(Math.round(number(delta.speed, 0)), 0, 999)));
     if ('rpm' in delta) {
       state.rpm = clamp(number(delta.rpm, 0), 0, 100);
       attribute(refs['rpm-arc'], 'stroke-dasharray', `${state.rpm * .75} 100`);
-      text(refs['rpm-value'], (state.rpm / 100 * config.maxRpm / 1000).toFixed(1));
       hud.classList.toggle('redline', state.rpm >= 85);
     }
     if ('gear' in delta) text(refs.gear, /^[NR0-9]$|^1[0-9]$/.test(String(delta.gear)) ? String(delta.gear) : 'N');
-    if ('engine' in delta || 'engineWarning' in delta) {
-      indicator(refs.engine, state.engine && !state.engineWarning, state.engineWarning, false,
-        state.engineWarning ? 'Engine damaged' : state.engine ? 'Engine running' : 'Engine off');
+    if ('engineWarning' in delta) {
+      hidden(refs.engine, !state.engineWarning);
     }
     if ('belt' in delta || 'beltAvailable' in delta) {
-      hidden(refs.belt, !state.beltAvailable);
-      indicator(refs.belt, state.belt, !state.belt, false, state.belt ? 'Seatbelt fastened' : 'Seatbelt unfastened');
+      hidden(refs.belt, !state.beltAvailable || state.belt);
+      attribute(refs.belt, 'aria-label', state.belt ? 'Seatbelt fastened' : 'Seatbelt unfastened');
     }
     if ('lights' in delta) {
-      indicator(refs.lights, state.lights === 1, false, state.lights === 2,
+      hidden(refs.lights, state.lights !== 1 && state.lights !== 2);
+      refs.lights.classList.toggle('high', state.lights === 2);
+      attribute(refs.lights, 'aria-label',
         state.lights === 2 ? 'High beams on' : state.lights === 1 ? 'Headlights on' : 'Lights off');
     }
     if ('fuel' in delta) {
@@ -100,8 +67,9 @@
       const transform = `scaleX(${Math.max(0, fuel) / 100})`;
       if (refs['fuel-fill'].style.transform !== transform) refs['fuel-fill'].style.transform = transform;
       refs.fuel.classList.toggle('low', low);
-      hidden(refs['fuel-warning'], !low);
+      attribute(refs.fuel, 'aria-label', fuel < 0 ? 'Fuel unknown' : `Fuel ${fuel} percent${low ? ', low' : ''}`);
     }
+    hidden(refs.indicators, refs.engine.hidden && refs.belt.hidden && refs.lights.hidden);
   }
 
   function configure(data) {
@@ -117,13 +85,6 @@
       style('--safe-y', `${inset}vh`);
     }
     if (typeof data.accent === 'string' && /^#[\da-f]{6}$/i.test(data.accent)) style('--accent', data.accent);
-    if ('maxRpm' in data) {
-      const maxRpm = clamp(number(data.maxRpm, 9000), 1000, 20000);
-      if (maxRpm !== config.maxRpm) {
-        config.maxRpm = maxRpm;
-        drawTicks();
-      }
-    }
     if ('lowFuel' in data) config.lowFuel = clamp(number(data.lowFuel, 20), 0, 100);
     if ('fuelEnabled' in data) config.fuelEnabled = data.fuelEnabled === true;
     hidden(refs.fuel, !config.fuelEnabled);
@@ -141,67 +102,24 @@
     }
   }
 
-  drawTicks();
   render(state);
   window.addEventListener('message', (event) => receive(event.data));
 
-  if (hasNui) {
-    // Handshake after DOM initialization prevents lost initial configuration.
-    // Retries are bounded and only cover resource startup, never telemetry.
-    const ready = async (attempt = 0) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000);
-      try {
-        const response = await fetch(`https://${window.GetParentResourceName()}/ready`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: controller.signal,
-        });
-        if (!response.ok) throw new Error('NUI not ready');
-      } catch {
-        if (attempt < 4) setTimeout(() => ready(attempt + 1), 500 * (attempt + 1));
-      } finally {
-        clearTimeout(timeout);
-      }
-    };
-    ready();
-  }
-
-  if (preview) {
-    document.body.classList.add('preview-mode');
-    $('preview').hidden = false;
-    hud.hidden = false;
-    const presets = {
-      cruise: { speed: 124, rpm: 52, gear: '4', fuel: 68, engine: true, engineWarning: false, belt: true, beltAvailable: true, lights: 0 },
-      redline: { speed: 248, rpm: 94, gear: '6', fuel: 12, engine: true, engineWarning: false, belt: true, beltAvailable: true, lights: 2 },
-      parked: { speed: 0, rpm: 0, gear: 'N', fuel: 43, engine: false, engineWarning: false, belt: false, beltAvailable: true, lights: 0 },
-    };
-    const demo = (data) => {
-      receive({ action: 'telemetry', ...data });
-      $('demo-speed').value = state.speed;
-      $('demo-rpm').value = state.rpm;
-      $('demo-speed-label').value = state.speed;
-      $('demo-rpm-label').value = `${(state.rpm / 100 * config.maxRpm / 1000).toFixed(1)}k`;
-      $('demo-belt').textContent = `Belt: ${state.belt ? 'on' : 'off'}`;
-      $('demo-belt').setAttribute('aria-pressed', state.belt);
-      $('demo-lights').textContent = `Lights: ${['off', 'on', 'high'][state.lights]}`;
-      $('demo-lights').setAttribute('aria-pressed', state.lights > 0);
-    };
-    document.querySelectorAll('[data-preset]').forEach((button) => button.addEventListener('click', () => {
-      document.querySelectorAll('[data-preset]').forEach((item) => item.classList.toggle('selected', item === button));
-      const preset = presets[button.dataset.preset];
-      demo({ ...preset, speed: Math.round(preset.speed * (config.unit === 'mph' ? .6213711922 : 1)) });
-    }));
-    $('demo-speed').addEventListener('input', (event) => demo({ speed: Number(event.target.value) }));
-    $('demo-rpm').addEventListener('input', (event) => demo({ rpm: Number(event.target.value) }));
-    $('demo-belt').addEventListener('click', () => demo({ belt: !state.belt }));
-    $('demo-lights').addEventListener('click', () => demo({ lights: (state.lights + 1) % 3 }));
-    $('demo-unit').addEventListener('click', () => {
-      const unit = config.unit === 'kmh' ? 'mph' : 'kmh';
-      const speed = Math.round(state.speed * (unit === 'mph' ? .6213711922 : 1.609344));
-      configure({ unit });
-      $('demo-speed').max = unit === 'mph' ? 200 : 320;
-      $('demo-unit').textContent = unit === 'mph' ? 'MPH → KM/H' : 'KM/H → MPH';
-      demo({ speed });
-    });
-    demo(presets.cruise);
-  }
+  // Handshake after DOM initialization prevents lost initial configuration.
+  // Retries are bounded and only cover resource startup, never telemetry.
+  const ready = async (attempt = 0) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    try {
+      const response = await fetch(`https://${window.GetParentResourceName()}/ready`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('NUI not ready');
+    } catch {
+      if (attempt < 4) setTimeout(() => ready(attempt + 1), 500 * (attempt + 1));
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+  ready();
 })();

@@ -4,7 +4,7 @@ game 'gta5'
 name 'zz-speedomter'
 author 'zogzi'
 description 'zz-speedomter — lightweight standalone vehicle HUD'
-version '1.0.1'
+version '1.1.0'
 
 ui_page 'web/index.html'
 

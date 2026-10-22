@@ -66,7 +66,6 @@ local function sendConfig()
         bottom = math.max(0, tonumber(Config.Position.bottom) or 28),
         safeZone = (1 - safeZone) / 2,
         accent = Config.Accent,
-        maxRpm = Config.MaxRpm,
         fuelEnabled = Config.Fuel.enabled,
         lowFuel = Config.Fuel.low
     })
@@ -158,7 +157,6 @@ CreateThread(function()
             payload.speed = math.floor(speed * (unit == 'mph' and 2.2369362921 or 3.6) + 0.5)
             payload.rpm = status.engine and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 100 + 0.5) or 0
             payload.gear = reversing and 'R' or ((not status.engine or gear == 0) and 'N' or tostring(gear))
-            payload.engine = status.engine
             payload.engineWarning = status.engineWarning
             payload.lights = status.lights
             payload.fuel = status.fuel
