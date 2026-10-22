@@ -109,6 +109,33 @@ class HudTests(unittest.TestCase):
         self.send(action="config", maxRpm=12000)
         self.assertFalse(self.page.evaluate("window.originalTick === document.querySelector('#ticks line')"))
 
+    def test_duplicate_updates_do_not_mutate_the_dom(self):
+        self.send(action="visibility", visible=True)
+        telemetry = dict(action="telemetry", speed=124, rpm=52, gear="4", fuel=68,
+                         engine=True, engineWarning=False, lights=1, belt=True, beltAvailable=True)
+        config = dict(action="config", unit="kmh", maxRpm=9000, scale=1,
+                      right=32, bottom=28, safeZone=.05, accent="#62f5bb", fuelEnabled=True)
+        self.send(**config)
+        self.send(**telemetry)
+        mutations = self.page.evaluate("""({telemetry, config}) => {
+            const observer = new MutationObserver(() => {});
+            observer.observe(document.documentElement, {subtree:true, attributes:true, childList:true, characterData:true});
+            for (let i = 0; i < 1000; i++) {
+                window.dispatchEvent(new MessageEvent('message', {data:telemetry}));
+                window.dispatchEvent(new MessageEvent('message', {data:{action:'visibility', visible:true}}));
+            }
+            window.dispatchEvent(new MessageEvent('message', {data:config}));
+            const records = observer.takeRecords().map(record => `${record.target.id}:${record.type}:${record.attributeName}`);
+            observer.disconnect();
+            return records;
+        }""", {"telemetry": telemetry, "config": config})
+        self.assertEqual(mutations, [])
+
+    def test_reduced_motion_disables_gauge_transitions(self):
+        self.page.emulate_media(reduced_motion="reduce")
+        for selector in ["#rpm-arc", "#fuel-fill"]:
+            self.assertEqual(self.page.locator(selector).evaluate("e => getComputedStyle(e).transitionDuration"), "0s")
+
     def test_unknown_fuel_and_malformed_input(self):
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", fuel=-1, gear="<img>", speed=-20, rpm=999)
@@ -155,6 +182,30 @@ class HudTests(unittest.TestCase):
         self.assertEqual(replies, ["{}"])
         self.assertTrue(self.page.locator("#preview").is_hidden())
         self.assertNotIn("preview-mode", self.page.locator("body").get_attribute("class") or "")
+
+    def test_nui_startup_recovers_from_a_stalled_handshake(self):
+        self.page.add_init_script("window.GetParentResourceName = () => 'zz-speedomter'")
+        attempts = []
+        stalled = []
+
+        def ready(route):
+            attempts.append(route.request)
+            if len(attempts) > 1:
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}',
+                              headers={"Access-Control-Allow-Origin": "*"})
+            else:
+                stalled.append(route)
+            # The first request deliberately stays pending to simulate startup lag.
+
+        self.page.route("https://zz-speedomter/ready", ready)
+        with self.page.expect_response("https://zz-speedomter/ready", timeout=5000) as response:
+            self.page.goto(self.url)
+        stalled[0].abort()  # Release Playwright's route after the browser has timed it out.
+        self.assertTrue(response.value.ok)
+        self.assertEqual(len(attempts), 2)
+        self.send(action="visibility", visible=True)
+        self.send(action="telemetry", speed=124)
+        self.assertEqual(self.page.locator("#speed").inner_text(), "124")
 
     def test_hud_fits_common_resolutions(self):
         self.send(action="visibility", visible=True)

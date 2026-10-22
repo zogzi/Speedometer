@@ -85,7 +85,9 @@ local belted = exports['zz-speedomter']:IsSeatbeltOn()
 
 ## Performance and validation
 
-The client polls telemetry at 10 Hz by default, rounds speed and RPM, and sends only changed fields to NUI. Telemetry and status buffers are reused; message objects are created only when data changes. Fuel, engine health, and lights are read at 2 Hz. On foot, the main loop sleeps for 750 ms. The browser has no animation loop, polling timer, or network dependency during normal gameplay. SVG ticks are constructed once and only rebuilt if the RPM scale changes. A frame loop is necessary **only while belted with exit blocking enabled**, because FiveM control suppression lasts one frame.
+The client polls telemetry at 10 Hz by default, rounds speed and RPM, and sends only changed fields to NUI. Telemetry and status buffers are reused; message objects are created only when data changes. Fuel, engine health, and lights are read at 2 Hz. On foot, the main loop sleeps for 750 ms. The browser has no animation loop, polling timer, or network dependency during normal gameplay. Repeated display values do not rewrite DOM text or attributes. SVG ticks are constructed once and only rebuilt if the RPM scale changes. A frame loop is necessary **only while belted with exit blocking enabled**, because FiveM control suppression lasts one frame.
+
+The NUI startup handshake has a two-second request timeout and up to four retries, with increasing delays. Those timers stop after success; they are separate from vehicle updates.
 
 No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server, hardware, frame rate, and other resources. Use `resmon 1` in FiveM to check this resource on foot, driving, and belted. Lower `UpdateInterval` values increase native calls and NUI traffic.
 

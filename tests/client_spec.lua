@@ -5,7 +5,7 @@ local car = { vehicle = 0, class = 0, driver = 1, dead = false, paused = false,
     speed = 10, velocityY = 10, rpm = 0.52, gear = 3, engine = true,
     health = 1000, lights = 0, beams = 0, fuel = 68 }
 local fuelReads, disabled, vehicleReads, speedReads = 0, 0, 0, 0
-local safeZone = 0.9
+local safeZone, clockOffset = 0.9, 0
 
 function GetCurrentResourceName() return 'zz-speedomter' end
 function SendNUIMessage(message) messages[#messages + 1] = message end
@@ -23,7 +23,7 @@ function IsEntityDead() return car.dead end
 function GetVehicleClass() return car.class end
 function GetPedInVehicleSeat() return car.driver end
 function IsPauseMenuActive() return car.paused end
-function GetGameTimer() return now end
+function GetGameTimer() return now + clockOffset end
 function GetSafeZoneSize() return safeZone end
 function GetIsVehicleEngineRunning() return car.engine end
 function GetVehicleLightsState() return true, car.lights, car.beams end
@@ -204,5 +204,80 @@ step(100)
 check(latest('telemetry').speed == 36, 'NUI reload receives a full telemetry refresh')
 events.onClientResourceStop('zz-speedomter')
 check(not latest('visibility').visible, 'resource stop hides HUD')
+
+-- Fresh instances exercise startup-only config flags without mutating live settings.
+local function fresh(configure, vehicleState)
+    now, clockOffset = 0, 0
+    tasks, messages, callbacks, commands, api, events = {}, {}, {}, {}, {}, {}
+    fuelReads, disabled, vehicleReads, speedReads = 0, 0, 0, 0
+    car = { vehicle = 10, class = 0, driver = 1, dead = false, paused = false,
+        speed = 10, velocityY = 10, rpm = 0.52, gear = 3, engine = true,
+        health = 1000, lights = 0, beams = 0, fuel = 68 }
+    for key, value in pairs(vehicleState or {}) do car[key] = value end
+    dofile('config.lua')
+    if configure then configure() end
+    dofile('client.lua')
+    callbacks.ready({}, function() end)
+    step(0)
+end
+
+fresh(function() Config.Seatbelt.enabled = false end)
+check(commands.zzbelt == nil and not api.SetSeatbelt(true) and #tasks == 1
+    and latest('telemetry').beltAvailable == false, 'disabled seatbelt registers no command or frame worker')
+
+fresh(function() Config.Seatbelt.blockExit = false end)
+check(api.SetSeatbelt(true), 'belt indicator can operate with exit blocking disabled')
+step(500)
+check(api.IsSeatbeltOn() and disabled == 0 and #tasks == 1, 'indicator-only belt never starts a frame worker')
+
+fresh(function() Config.ShowPassenger = true end, { driver = 2 })
+check(latest('visibility').visible and latest('telemetry').speed == 36,
+    'passenger option shows the HUD for a non-driver')
+
+fresh(function() Config.HideWhenPaused = false end, { paused = true })
+check(latest('visibility').visible, 'pause visibility option is honored')
+
+fresh(function()
+    Config.Fuel.capacity = 60
+    Config.Unit = 'mph'
+end, { fuel = 30 })
+check(latest('telemetry').fuel == 50 and latest('telemetry').speed == 22
+    and latest('config').unit == 'mph', 'custom fuel capacity and initial MPH configuration agree')
+
+fresh(function() Config.UpdateInterval = 1 end)
+previousSpeedReads = speedReads
+step(1000)
+check(speedReads - previousSpeedReads == 20, 'configured active interval is safely bounded to 50 ms')
+
+fresh()
+for _ = 1, 200 do
+    api.SetSeatbelt(true)
+    api.SetSeatbelt(false)
+end
+step(2)
+check(#tasks == 2 and coroutine.status(tasks[2].co) == 'dead' and disabled == 0,
+    '200 rapid belt toggle pairs create only one worker, which exits without blocking')
+api.SetSeatbelt(true)
+step(2)
+car.vehicle = 20
+local controlsBeforeSwitch = disabled
+step(2)
+check(not api.IsSeatbeltOn() and disabled == controlsBeforeSwitch
+    and coroutine.status(tasks[3].co) == 'dead', 'belt worker exits immediately after a vehicle switch')
+
+fresh()
+car.health = 200
+clockOffset = -1000
+step(100)
+check(latest('telemetry').engineWarning == true and fuelReads == 2,
+    'status polling recovers when the game timer wraps backwards')
+
+fresh()
+for i = 1, 1000 do
+    car.speed = i % 50
+    step(100)
+end
+check(count('telemetry') == 1001 and #tasks == 1,
+    '100-second changing-telemetry simulation produces one packet per tick and no extra workers')
 
 print(string.format('\n%d client checks passed (mocked FiveM natives, actual Lua 5.4).', checks))

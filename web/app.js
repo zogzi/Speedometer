@@ -19,6 +19,24 @@
     'fuel', 'fuel-value', 'fuel-fill', 'fuel-warning',
   ].map((id) => [id, $(id)]));
 
+  // Avoid replacing text nodes or dirtying attributes when the display is unchanged.
+  function text(element, value) {
+    if (element.textContent !== value) element.textContent = value;
+  }
+
+  function attribute(element, name, value) {
+    if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+  }
+
+  function hidden(element, value) {
+    if (element.hidden !== value) element.hidden = value;
+  }
+
+  function style(name, value) {
+    const css = String(value);
+    if (root.style.getPropertyValue(name) !== css) root.style.setProperty(name, css);
+  }
+
   function drawTicks() {
     const ns = 'http://www.w3.org/2000/svg';
     const group = $('ticks');
@@ -50,24 +68,24 @@
     element.classList.toggle('active', active);
     element.classList.toggle('warning', warning);
     element.classList.toggle('high', high);
-    element.setAttribute('aria-label', label);
+    attribute(element, 'aria-label', label);
   }
 
   function render(delta) {
-    if ('speed' in delta) refs.speed.textContent = String(clamp(Math.round(number(delta.speed, 0)), 0, 999));
+    if ('speed' in delta) text(refs.speed, String(clamp(Math.round(number(delta.speed, 0)), 0, 999)));
     if ('rpm' in delta) {
       state.rpm = clamp(number(delta.rpm, 0), 0, 100);
-      refs['rpm-arc'].setAttribute('stroke-dasharray', `${state.rpm * .75} 100`);
-      refs['rpm-value'].textContent = (state.rpm / 100 * config.maxRpm / 1000).toFixed(1);
+      attribute(refs['rpm-arc'], 'stroke-dasharray', `${state.rpm * .75} 100`);
+      text(refs['rpm-value'], (state.rpm / 100 * config.maxRpm / 1000).toFixed(1));
       hud.classList.toggle('redline', state.rpm >= 85);
     }
-    if ('gear' in delta) refs.gear.textContent = /^[NR0-9]$|^1[0-9]$/.test(String(delta.gear)) ? String(delta.gear) : 'N';
+    if ('gear' in delta) text(refs.gear, /^[NR0-9]$|^1[0-9]$/.test(String(delta.gear)) ? String(delta.gear) : 'N');
     if ('engine' in delta || 'engineWarning' in delta) {
       indicator(refs.engine, state.engine && !state.engineWarning, state.engineWarning, false,
         state.engineWarning ? 'Engine damaged' : state.engine ? 'Engine running' : 'Engine off');
     }
     if ('belt' in delta || 'beltAvailable' in delta) {
-      refs.belt.hidden = !state.beltAvailable;
+      hidden(refs.belt, !state.beltAvailable);
       indicator(refs.belt, state.belt, !state.belt, false, state.belt ? 'Seatbelt fastened' : 'Seatbelt unfastened');
     }
     if ('lights' in delta) {
@@ -78,26 +96,27 @@
       const raw = number(delta.fuel, -1);
       const fuel = raw < 0 ? -1 : clamp(Math.round(raw), 0, 100);
       const low = fuel >= 0 && fuel <= config.lowFuel;
-      refs['fuel-value'].textContent = fuel < 0 ? '—' : `${fuel}%`;
-      refs['fuel-fill'].style.transform = `scaleX(${Math.max(0, fuel) / 100})`;
+      text(refs['fuel-value'], fuel < 0 ? '—' : `${fuel}%`);
+      const transform = `scaleX(${Math.max(0, fuel) / 100})`;
+      if (refs['fuel-fill'].style.transform !== transform) refs['fuel-fill'].style.transform = transform;
       refs.fuel.classList.toggle('low', low);
-      refs['fuel-warning'].hidden = !low;
+      hidden(refs['fuel-warning'], !low);
     }
   }
 
   function configure(data) {
     if ('unit' in data) config.unit = data.unit === 'mph' ? 'mph' : 'kmh';
-    refs.unit.textContent = config.unit === 'mph' ? 'MPH' : 'KM/H';
-    if ('scale' in data) root.style.setProperty('--scale', clamp(number(data.scale, 1), .65, 1.5));
+    text(refs.unit, config.unit === 'mph' ? 'MPH' : 'KM/H');
+    if ('scale' in data) style('--scale', clamp(number(data.scale, 1), .65, 1.5));
     for (const key of ['right', 'bottom']) {
-      if (key in data) root.style.setProperty(`--${key}`, `${clamp(number(data[key], 0), 0, 4000)}px`);
+      if (key in data) style(`--${key}`, `${clamp(number(data[key], 0), 0, 4000)}px`);
     }
     if ('safeZone' in data) {
       const inset = clamp(number(data.safeZone, 0), 0, .1) * 100;
-      root.style.setProperty('--safe-x', `${inset}vw`);
-      root.style.setProperty('--safe-y', `${inset}vh`);
+      style('--safe-x', `${inset}vw`);
+      style('--safe-y', `${inset}vh`);
     }
-    if (typeof data.accent === 'string' && /^#[\da-f]{6}$/i.test(data.accent)) root.style.setProperty('--accent', data.accent);
+    if (typeof data.accent === 'string' && /^#[\da-f]{6}$/i.test(data.accent)) style('--accent', data.accent);
     if ('maxRpm' in data) {
       const maxRpm = clamp(number(data.maxRpm, 9000), 1000, 20000);
       if (maxRpm !== config.maxRpm) {
@@ -107,13 +126,13 @@
     }
     if ('lowFuel' in data) config.lowFuel = clamp(number(data.lowFuel, 20), 0, 100);
     if ('fuelEnabled' in data) config.fuelEnabled = data.fuelEnabled === true;
-    refs.fuel.hidden = !config.fuelEnabled;
+    hidden(refs.fuel, !config.fuelEnabled);
     render(state);
   }
 
   function receive(data) {
     if (!data || typeof data !== 'object') return;
-    if (data.action === 'visibility') hud.hidden = data.visible !== true;
+    if (data.action === 'visibility') hidden(hud, data.visible !== true);
     if (data.action === 'config') configure(data);
     if (data.action === 'telemetry') {
       // Only copy known fields; messages never supply HTML or execute code.
@@ -130,13 +149,17 @@
     // Handshake after DOM initialization prevents lost initial configuration.
     // Retries are bounded and only cover resource startup, never telemetry.
     const ready = async (attempt = 0) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
       try {
         const response = await fetch(`https://${window.GetParentResourceName()}/ready`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: controller.signal,
         });
         if (!response.ok) throw new Error('NUI not ready');
       } catch {
         if (attempt < 4) setTimeout(() => ready(attempt + 1), 500 * (attempt + 1));
+      } finally {
+        clearTimeout(timeout);
       }
     };
     ready();

@@ -2,8 +2,8 @@
 
 ## Verified locally
 
-- **37 checks in Lua 5.4**, running the real client script with mocked FiveM natives and a deterministic scheduler.
-- **9 browser tests in Chromium**, using the real HTML/CSS/JavaScript and NUI message protocol.
+- **48 checks in Lua 5.4**, running the real client script with mocked FiveM natives and a deterministic scheduler.
+- **12 browser tests in Chromium**, using the real HTML/CSS/JavaScript and NUI message protocol.
 - JavaScript syntax validation.
 - Visual inspection against dark preview and synthetic bright backgrounds. These are browser renders, not GTA screenshots.
 
@@ -20,10 +20,17 @@
 | Belted, exit blocking enabled | Per-frame exit-control suppression, required by FiveM |
 | Browser idle | No telemetry polling timer or animation loop |
 | Repeated configuration | Static SVG dial retained when its RPM scale stays the same |
+| 1,000 identical browser updates | Zero DOM mutations; repeating visibility/configuration also leaves the DOM unchanged |
+| 100-second changing-telemetry simulation | One telemetry packet per active tick; no additional worker threads |
+| 200 rapid belt toggle pairs | One on-demand worker, which exits without applying an exit block |
+| Disabled seatbelt / indicator-only mode | No belt command when disabled; no frame worker without exit blocking |
+| NUI startup request stalls | Aborted after 2 seconds and retried with bounded backoff; timeout is cleared after completion |
 
 These are simulated scheduling/message counts, **not measured in-game CPU times**. Real frames can delay scheduling, and actual engine RPM or fuel fluctuation naturally generates additional updates.
 
 The telemetry and status buffers are reused. Message objects are allocated only when data changes. State resets occur on vehicle eligibility transitions rather than on every idle tick. There are no server scripts, network events, runtime package dependencies, external fonts, remote UI assets, blur filters, continuous flashing effects, or fixed `will-change` compositor hints.
+
+Text, attributes, hidden state, and configuration styles are written only when their displayed values change. Startup timers exist only during the bounded NUI handshake; they do not poll telemetry. Additional regression checks cover passenger/pause options, custom fuel capacity, initial MPH units, interval limits, and game-timer wraparound.
 
 ## Visual checks
 
