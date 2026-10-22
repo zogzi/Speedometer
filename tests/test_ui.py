@@ -9,7 +9,7 @@ import threading
 import unittest
 
 from PIL import Image
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 
@@ -77,7 +77,7 @@ class HudTests(unittest.TestCase):
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", speed=199, rpm=94, gear="4",
                   engine=True, engineWarning=False, lights=2, belt=True, beltAvailable=True)
-        self.assertEqual(self.page.locator("#speed").inner_text(), "199")
+        expect(self.page.locator("#speed")).to_have_text("199")
         self.assertEqual(self.page.locator("#gear").inner_text(), "4")
         self.assertIn("redline", self.page.locator("#hud").get_attribute("class"))
         self.assertEqual(self.page.locator("#lights").get_attribute("aria-label"), "High beams on")
@@ -154,6 +154,116 @@ class HudTests(unittest.TestCase):
             };
             window.rpmClock = clock;
         }""")
+
+    def test_speed_counts_smoothly_then_brakes_to_zero(self):
+        self.install_rpm_clock()
+        self.send(action="visibility", visible=True)
+        self.send(action="telemetry", speed=120)
+        self.assertEqual(self.page.locator("#speed").inner_text(), "0")
+        values = self.page.evaluate("""() => Array.from({length:40}, () => {
+            rpmClock.tick(16);
+            return Number(document.querySelector('#speed').textContent);
+        })""")
+        self.assertGreater(len(set(values)), 15)
+        self.assertEqual(values, sorted(values))
+        self.assertLess(values[0], 10)
+        self.assertEqual(values[-1], 120)
+        self.send(action="telemetry", speed=0)
+        braking = self.page.evaluate("""() => Array.from({length:60}, () => {
+            rpmClock.tick(16);
+            return Number(document.querySelector('#speed').textContent);
+        })""")
+        self.assertEqual(braking, sorted(braking, reverse=True))
+        self.assertGreater(braking[0], 0)
+        self.assertEqual(braking[-1], 0)
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
+    def test_frame_rate_readings_keep_both_gauges_fluid_on_one_clock(self):
+        self.install_rpm_clock()
+        self.send(action="telemetry", speed=20, rpm=20)
+        self.send(action="visibility", visible=True)
+        result = self.page.evaluate("""() => {
+            let previous = 15;
+            const arcSteps = [], speeds = [], callbacks = [];
+            for(let i=1; i<=120; i++) {
+                window.dispatchEvent(new MessageEvent('message', {data:{
+                    action:'telemetry', speed:20+i*.5, rpm:20+i*.4
+                }}));
+                callbacks.push(rpmClock.pending.size);
+                const arc = rpmClock.tick(1000/60);
+                if(i>30) arcSteps.push(arc-previous);
+                previous = arc;
+                speeds.push(Number(document.querySelector('#speed').textContent));
+            }
+            return {arcSteps, speeds, callbacks};
+        }""")
+        self.assertTrue(all(count == 1 for count in result["callbacks"]))
+        self.assertGreater(min(result["arcSteps"]), 0)
+        self.assertLess(max(result["arcSteps"]) / min(result["arcSteps"]), 1.05)
+        self.assertEqual(result["speeds"], sorted(result["speeds"]))
+        steps = [b-a for a,b in zip(result["speeds"], result["speeds"][1:])]
+        self.assertLessEqual(max(steps), 1)
+        self.page.evaluate("rpmClock.tick(1000)")
+        self.assertEqual(self.page.locator("#speed").inner_text(), "80")
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "51 100")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
+    def test_speed_retargeting_between_frames_matches_refresh_rates(self):
+        self.install_rpm_clock()
+        results = []
+        for rate in [30, 60, 144]:
+            self.send(action="visibility", visible=False)
+            self.send(action="telemetry", speed=0)
+            self.send(action="visibility", visible=True)
+            results.append(self.page.evaluate("""rate => {
+                const start = rpmClock.now;
+                const events = [
+                    {time:17, speed:40.75}, {time:82, speed:90.25},
+                    {time:139, speed:120.1}, {time:243, speed:60.5}
+                ];
+                for (let t=1000/rate; t<400; t+=1000/rate) events.push({time:t});
+                events.push({time:400});
+                events.sort((a,b) => a.time-b.time);
+                for(const event of events) {
+                    if ('speed' in event) {
+                        rpmClock.now = start+event.time;
+                        window.dispatchEvent(new MessageEvent('message', {
+                            data:{action:'telemetry',speed:event.speed}
+                        }));
+                    } else rpmClock.tick(start+event.time-rpmClock.now);
+                }
+                return Number(document.querySelector('#speed').textContent);
+            }""", rate))
+        self.assertEqual(len(set(results)), 1)
+
+    def test_unit_switch_converts_speed_without_a_false_braking_animation(self):
+        self.install_rpm_clock()
+        self.send(action="telemetry", speed=100)
+        self.send(action="visibility", visible=True)
+        self.send(action="config", unit="mph")
+        self.assertEqual(self.page.locator("#speed").inner_text(), "62")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+        self.send(action="telemetry", speed=100 / 3.6 * 2.2369362921)
+        self.page.evaluate("rpmClock.tick(16)")
+        self.assertEqual(self.page.locator("#speed").inner_text(), "62")
+        self.send(action="config", unit="kmh")
+        self.assertEqual(self.page.locator("#speed").inner_text(), "100")
+
+    def test_speed_hiding_and_reduced_motion_snap_to_latest_reading(self):
+        self.install_rpm_clock()
+        self.send(action="visibility", visible=True)
+        self.send(action="telemetry", speed=200)
+        self.page.evaluate("rpmClock.tick(16)")
+        self.send(action="visibility", visible=False)
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+        self.send(action="telemetry", speed=80)
+        self.send(action="visibility", visible=True)
+        self.assertEqual(self.page.locator("#speed").inner_text(), "80")
+        self.page.emulate_media(reduced_motion="reduce")
+        self.send(action="telemetry", speed=140, rpm=50)
+        self.assertEqual(self.page.locator("#speed").inner_text(), "140")
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "37.5 100")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
 
     def test_rpm_interpolates_retargets_and_stops_after_settling(self):
         self.install_rpm_clock()
@@ -380,12 +490,12 @@ class HudTests(unittest.TestCase):
     def test_default_hud_and_icons_have_readable_size(self):
         self.send(action="visibility", visible=True)
         box = self.page.locator("#hud").bounding_box()
-        self.assertAlmostEqual(box["width"], 360, delta=1)
-        self.assertAlmostEqual(box["height"], 320, delta=1)
+        self.assertAlmostEqual(box["width"], 306, delta=1)
+        self.assertAlmostEqual(box["height"], 272, delta=1)
         for name in ["engine", "belt", "lights"]:
             icon = self.page.locator("#" + name).bounding_box()
-            self.assertGreaterEqual(icon["width"], 26)
-            self.assertGreaterEqual(icon["height"], 26)
+            self.assertGreaterEqual(icon["width"], 22)
+            self.assertGreaterEqual(icon["height"], 22)
         self.assertEqual(self.page.locator(".wordmark, .status-row, .overline").count(), 0)
         self.assertEqual(self.page.locator(".rpm-caption, .fuel, #rpm-value").count(), 0)
         self.assertEqual(self.page.locator(".tick-label").count(), 10)
@@ -450,7 +560,7 @@ class HudTests(unittest.TestCase):
         self.assertEqual(len(attempts), 2)
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", speed=124)
-        self.assertEqual(self.page.locator("#speed").inner_text(), "124")
+        expect(self.page.locator("#speed")).to_have_text("124")
 
     def test_hud_fits_common_resolutions(self):
         self.send(action="visibility", visible=True)

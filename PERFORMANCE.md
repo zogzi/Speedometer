@@ -1,75 +1,58 @@
-# zz-speedomter 1.6.0 performance review
+# zz-speedomter 1.7.0 motion and performance review
 
-See [REVIEW.md](REVIEW.md) for the guide/source comparison, visual contrast fix and local Chromium measurements. Version 1.6.0 removes one redundant native call per steady-driving sample and retains the existing telemetry rate and RPM smoothing. The server owner reports that performance is now good.
+Version 1.7.0 deliberately prioritizes fluid speed/RPM motion over the lower active CPU budget of 1.6.0. The default is now `Config.UpdateInterval = 0`, meaning one telemetry sample per game frame through `Wait(0)`. The HUD is 15% smaller through `Config.Scale = 0.85`.
 
-## Changes prompted by the reported 0.14-ms cost
+## What changed
 
-Version 1.3.0 added an independent 16-ms RPM worker to prioritize smoothness. Version 1.4.0 removes it. One loop now reads RPM, speed and gear every 100 ms and combines changes into one telemetry packet. Browser interpolation still draws intermediate arc positions. Half-percent RPM precision avoids tiny idle fluctuations triggering messages.
-
-The seatbelt frame loop now contains only the required `DisableControlAction` call. Vehicle, seat and death validation use the shared vehicle poll. Forced exits or vehicle changes may retain exit suppression until that poll, up to 100 ms by default. Normal unbuckling stops the loop immediately on its next iteration.
-
-## Additional 1.6.0 savings
-
-While moving, `GetEntitySpeedVector(vehicle, true)` is already needed for reverse detection. Its vector magnitude also gives the full 3D speed, so the separate `GetEntitySpeed` read is redundant. The [FiveM vector documentation](https://github.com/citizenfx/fivem-docs/blob/master/content/docs/scripting-reference/runtimes/lua/functions/vector3.md) defines `#vector` as its length, and the [native documentation](https://github.com/citizenfx/natives/blob/master/ENTITY/GetEntitySpeedVector.md) defines the relative direction.
-
-| Speed/direction work at default settings | 1.5.0 | 1.6.0 |
+| Behavior | 1.6.0 | 1.7.0 default |
 | --- | --- | --- |
-| Steady driving | 10 scalar + 10 vector reads per second | 10 vector reads per second |
-| Parked after settling | 10 scalar reads per second | 10 scalar reads per second |
-| First moving tick from rest | Scalar + vector | Scalar + vector |
-| Update interval | 100 ms | 100 ms |
+| Active sampling | Every 100 ms | Every game frame |
+| Speed sent to NUI | Rounded integer | Full fractional reading |
+| RPM sent to NUI | Half-percent increments | Full fractional reading |
+| Speed display | Jumps to each received number | Animates between readings, then rounds for display |
+| RPM arc | Time-based spring | Same continuous spring, finer inputs and stroke precision |
+| Browser animation | One RPM callback | One shared speed/RPM callback |
+| Default footprint | 360 × 320 pixels | 306 × 272 pixels |
+| Side icon size | 26 pixels | About 22 pixels |
 
-This removes 10 native calls per second while steadily driving, not 50% of total resource CPU time. Tests verify full sideways/vertical speed, reverse, stopping and acceleration without adding a sampling interval. Losing an entity also invalidates its class cache before a reused handle can be classified.
+Both gauges preserve position and velocity across incoming readings. The exact critically damped spring advances to each packet's receipt time before switching targets, avoiding repeated easing restarts. Its time scale is about 56 ms, adding roughly 110 ms of display delay during a steady ramp. Higher sampling reduces the separate delay before a new vehicle reading arrives. Abrupt changes can retain a little motion before reversing, but values stay bounded to 0–999 speed and 0–100% RPM. Gear changes remain immediate; fractional speed is rounded only when painted. Switching units converts the current speed and velocity instead of animating a false speed change.
 
-## Verified locally
+## Current work budget
 
-- **72 Lua checks** execute the client script with real Lua 5.4 and mocked FiveM natives.
-- **24 Chromium tests** exercise the actual UI, including smooth interpolation, side-icon placement, absence of boxes/captions, engine damage colors and embedded canvas transparency.
+A visible, moving vehicle performs one velocity-vector read, one RPM read (engine running), one gear read (engine running), and shared eligibility checks per game frame. At 60 game frames per second this is roughly 60 of each active read per second, compared with roughly 10 in 1.6.0. This is a sampling comparison, not a CPU percentage or frame-rate guarantee. Only changed fields are sent, together in at most one telemetry packet per sample. Fractional precision means small fluctuations can now generate packets that older releases suppressed.
+
+The vector still supplies both full 3D speed and reverse direction, avoiding a redundant scalar native while moving. The [vector3 documentation](https://github.com/citizenfx/fivem-docs/blob/master/content/docs/scripting-reference/runtimes/lua/functions/vector3.md) defines vector length, and [GetEntitySpeedVector](https://github.com/citizenfx/natives/blob/master/ENTITY/GetEntitySpeedVector.md) documents local direction. Parked vehicles use a scalar-only motion probe. Vehicle class is cached; engine-off vehicles skip RPM/gear natives. Health/lights are checked about every 500 ms, subject to frame scheduling. Hidden/paused HUDs skip telemetry and check eligibility every 100 ms by default; on-foot detection sleeps 750 ms. No fuel provider or separate RPM worker exists.
+
+The optional belt worker calls only `DisableControlAction(0, 75, true)` each frame while belted. The main loop validates vehicle/seat/death state. After validation clears the belt, the worker ends on its next frame. No belt worker runs while unbelted or with `Seatbelt.blockExit = false`.
+
+Browser rendering shares one on-demand frame callback. Hidden, backgrounded and settled gauges stop scheduling callbacks. Reduced-motion preferences snap to readings. Static ticks are retained; unchanged text/attributes are not rewritten. The SVG arc still requires painting; this is not a compositor-only animation. Changing speed text also incurs browser layout work.
+
+Set `Config.UpdateInterval = 100` to restore the older sampling cadence while retaining the new speed and RPM animation. The new frame-based mode is the shipping default because fluidity is the requested priority. Older explicit config values remain honored.
+
+## Validation
+
+- **81 Lua checks** execute the real client with Lua 5.4 and mocked FiveM natives. Existing lifecycle/work-budget tests cover the optional 100-ms mode. Additional tests verify shipping defaults, one sample per simulated frame, combined packets, fractional values, pause backoff, and vehicle/belt changes. The scheduler models `Wait(0)` as a 16-ms frame; it is not a GTA benchmark.
+- **29 Chromium tests** cover speed counting/braking, fractional frame-rate inputs, shared animation scheduling, unit conversion, 30/60/144-Hz retargeting, settling/visibility/reduced motion, warnings, layouts and transparent embedded canvases. A steady 60-Hz RPM ramp must keep fastest/slowest frame motion within 1.05× after warmup; the optional 100-ms ramp retains its 1.5× limit.
 - JavaScript syntax and Git whitespace checks.
-- Preview images use mocked telemetry, not GTA screenshots.
+- Preview images and the motion recording use mocked telemetry, not GTA footage.
 
-| Work | Version 1.3.0 | Version 1.6.0 |
-| --- | --- | --- |
-| Default RPM reads over 10 simulated seconds | 625 | 100 (84% fewer) |
-| Separate RPM entity checks | One per RPM iteration | None |
-| Telemetry messages when RPM and speed keep changing | Separate RPM and main packets | At most one per 100-ms tick |
-| Active telemetry workers | Two | One |
-| Belt worker native calls per frame | Two | One |
-| Light/health polling | Every 500 ms | Every 500 ms |
-| Fuel work | None | None |
+`python tests/profile_ui.py` records local Chromium work counters with 16-ms mock messages. See [docs/ui-profile.json](docs/ui-profile.json). These counters include harness work and do not measure FiveM Lua/native execution, GTA frame times, CEF GPU costs or performance relative to qb-hud.
 
-After entry, the 10-second unchanged driving test observes 100 velocity-vector reads, zero separate scalar speed reads, 100 RPM reads, 20 light reads and zero repeated telemetry packets. Changing speed and RPM together produces exactly 100 packets over 10 simulated seconds. Lights off, low beams and high beams have the same polling/message behavior in the fixture. These are native-call and message counts, not measured in-game milliseconds.
+## Visual and in-game checks
 
-On foot, vehicle detection sleeps 750 ms. Hidden/paused/suppressed HUDs skip telemetry reads. Parked vehicles skip reverse-vector reads; engine-off vehicles skip RPM and gear reads. Vehicle class is cached. No belt worker runs while unbelted or when `Seatbelt.blockExit = false`. Old `RpmInterval = 16` configs cannot re-enable the removed worker.
+The default dial is 272 pixels across with unboxed icons following its left curve. Neutral silver-white/charcoal colors remain; engine damage is red, healthy/running green, belt warning amber and high beams blue. There is no fuel bar, branding, bottom RPM explanation or SPEED/GEAR caption. Transparent root/body and normal color scheme preserve the grey-screen fix. Layout tests cover 720p–4K and scales 0.65–1.5. Bright/dark previews use synthetic backgrounds.
 
-Browser motion uses one on-demand frame callback and exact critically damped interpolation, now tuned with a 56-ms time scale for the 100-ms input cadence. Motion advances to the packet timestamp before the target changes, avoiding refresh-rate-dependent progress when messages arrive between frames. The spring adds roughly 110 ms of lag during a steady input ramp, in addition to sampling delay. It preserves position and velocity across samples, behaves consistently at 30/60/144 Hz, and stops when settled, hidden or backgrounded. Reduced-motion mode snaps to readings. The dial range remains bounded to 0–100 percent; abrupt target changes can retain a little motion before reversing. Tick marks and unchanged labels are not rewritten every frame.
+Actual GTA/FiveM is unavailable in this environment. Install the complete update and compare acceleration, gear shifts, braking to zero, reverse, unit changes, pause/resume, vehicle switching, engine damage/repair, belt and lights in game. The higher active resource cost is intentional; no fixed millisecond or FPS claim is made.
 
-## Visual checks
-
-The default dial, RPM arc and gear use silver-white, charcoal and grey. Side icon centers share a 174-pixel radius with even 20-degree spacing. Dial shading stays inside the outer track and text uses a compact shadow instead of the previous broad blur. Unboxed engine, belt and light icons follow the left side of the dial; semantic green/red/amber/blue statuses remain. SPEED/GEAR captions, ZZ branding, status panel, gear box, fuel and bottom RPM explanation are absent. The engine icon is green when healthy/running, red below full engine health (1000), and dim when healthy/off. Default footprint is about 360 × 320 pixels. The dial is 320 pixels across (previously 280), and icons are 26 pixels (previously 17.5). Placement is checked from 720p to 4K and scales 0.65–1.5.
-
-The transparent root/body and normal color scheme remain. Pixel checks verify that the NUI does not paint a grey screen over the game. No browser demo is shipped.
-
-## In-game measurement still required
-
-The reported 0.14-ms resource time and comparison with qb-hud cannot be reproduced on this cloud machine, which has no GTA/FiveM client. No claim of matching 0.04–0.05 ms is made from mocked tests. Update the client and complete web folder, restart the resource, then compare `resmon 1` with the same car, frame cap and other resources on foot, parked, accelerating, belted and with headlights on. Use `Config.UpdateInterval = 100`; old custom values of 50 double the default telemetry frequency.
-
-Verify shifts, reverse, engine start/stop, damage/repair, pause/resume, seat changes, forced vehicle switches and resource restart. To isolate belt cost, compare `Config.Seatbelt.blockExit = false` with the default. The frame-scoped exit native is documented in the [FiveM native reference](https://github.com/citizenfx/natives/blob/master/PAD/DisableControlAction.md).
-
-### Historical headlight CPU report
-
-A sustained increase with headlights on was reported in-game on earlier versions; the user now reports good performance. The following procedure is retained in case the symptom returns. The local regression cases show equal light polling and no message/animation storm in all three steady light states, but this does **not** establish that the reported in-game issue is fixed. Native execution cost, changing real telemetry, and interactions with other resources cannot be reproduced by mocked natives.
-
-After updating, compare the same stationary vehicle with its engine running, belt off, and lights off/on, waiting 10 seconds between changes. Keep the frame cap and other resources unchanged. If `zz-speedomter` still stays substantially higher with lights on, capture each condition in the client F8 console:
+For a real resource capture, use the client F8 console:
 
 ```text
+resmon 1
 profiler record 500
+profiler view
+profiler saveJSON zz-speedomter-driving.json
 ```
 
-When the recording finishes, inspect it with `profiler view` or save separate captures:
+Use NUI developer tools to inspect browser rendering separately. Keep the same vehicle, frame cap and belt/light state when comparing versions or settings. If a sustained light-related cost increase returns, capture separate lights-off/on profiles with the same stationary vehicle. Mocked native calls cannot establish actual in-game native costs.
 
-```text
-profiler saveJSON zz-speedomter-lights-off.json
-```
-
-Repeat with lights on and save `zz-speedomter-lights-on.json`. The captures are needed to identify the actual expensive Lua/native call instead of guessing from a resource average. To isolate belt overhead, repeat the same comparison with only belt state changed. `Config.Seatbelt.blockExit = false` removes the belt frame worker entirely while retaining the belt indicator and toggle, but allows normal vehicle exit while belted.
+See [REVIEW.md](REVIEW.md) for the documentation and external source comparisons.

@@ -38,89 +38,105 @@
   }
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let rpmTarget = 0;
-  let rpmDisplay = 0;
-  let rpmFrame = null;
-  let rpmTime = 0;
-  let rpmVelocity = 0;
+  // Both instruments use one clock and retain their velocity across packets.
+  // The exact spring solution behaves consistently at different refresh rates.
+  const gauges = {
+    speed: { target: 0, display: 0, velocity: 0, maximum: 999 },
+    rpm: { target: 0, display: 0, velocity: 0, maximum: 100 },
+  };
+  const gaugeNames = Object.keys(gauges);
+  let animationFrame = null;
+  let animationTime = 0;
 
-  function paintRpm() {
-    attribute(refs['rpm-arc'], 'stroke-dasharray', `${Number((rpmDisplay * .75).toFixed(3))} 100`);
+  function paintGauges() {
+    text(refs.speed, String(Math.round(gauges.speed.display)));
+    attribute(refs['rpm-arc'], 'stroke-dasharray', `${Number((gauges.rpm.display * .75).toFixed(5))} 100`);
   }
 
-  function stopRpm() {
-    if (rpmFrame !== null) cancelAnimationFrame(rpmFrame);
-    rpmFrame = null;
-    rpmTime = 0;
-    rpmVelocity = 0;
+  function stopAnimation() {
+    if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+    animationFrame = null;
+    animationTime = 0;
+    for (const gauge of Object.values(gauges)) gauge.velocity = 0;
   }
 
-  function advanceRpm(now) {
+  function advanceGauges(now) {
     // A message can arrive after this frame's timestamp. Never move time back.
-    now = Math.max(now, rpmTime);
-    const elapsed = now - rpmTime;
-    rpmTime = now;
-    // Tuned for 100-ms telemetry: spread motion across samples instead of
-    // almost reaching each target and visibly slowing before the next packet.
+    now = Math.max(now, animationTime);
+    const elapsed = now - animationTime;
+    animationTime = now;
     const frequency = .018;
-    const offset = rpmDisplay - rpmTarget;
-    const coefficient = rpmVelocity + frequency * offset;
     const decay = Math.exp(-frequency * elapsed);
-    const position = rpmTarget + (offset + coefficient * elapsed) * decay;
-    rpmVelocity = (rpmVelocity - frequency * coefficient * elapsed) * decay;
-    rpmDisplay = clamp(position, 0, 100);
-    if (position !== rpmDisplay) rpmVelocity = 0;
-    const settled = Math.abs(rpmTarget - rpmDisplay) < .015 && Math.abs(rpmVelocity) < .002;
-    if (settled) { rpmDisplay = rpmTarget; rpmVelocity = 0; }
+    let settled = true;
+    for (const gauge of Object.values(gauges)) {
+      const offset = gauge.display - gauge.target;
+      const coefficient = gauge.velocity + frequency * offset;
+      const position = gauge.target + (offset + coefficient * elapsed) * decay;
+      gauge.velocity = (gauge.velocity - frequency * coefficient * elapsed) * decay;
+      gauge.display = clamp(position, 0, gauge.maximum);
+      if (position !== gauge.display) gauge.velocity = 0;
+      // Finish below a visible fraction of a digit or arc pixel.
+      if (Math.abs(gauge.target - gauge.display) < .001 && Math.abs(gauge.velocity) < .0001) {
+        gauge.display = gauge.target;
+        gauge.velocity = 0;
+      } else settled = false;
+    }
     return settled;
   }
 
-  function stepRpm(now) {
-    rpmFrame = null;
-    if (hud.hidden || document.hidden) {
-      rpmDisplay = rpmTarget;
-      rpmTime = 0;
-      rpmVelocity = 0;
-      return;
-    }
-    const settled = advanceRpm(now);
-    paintRpm();
-    if (!settled) rpmFrame = requestAnimationFrame(stepRpm);
-    else rpmTime = 0;
+  function snapGauges() {
+    stopAnimation();
+    for (const gauge of Object.values(gauges)) gauge.display = gauge.target;
   }
 
-  function setRpmTarget(value) {
+  function stepGauges(now) {
+    animationFrame = null;
+    if (hud.hidden || document.hidden) {
+      snapGauges();
+      return;
+    }
+    const settled = advanceGauges(now);
+    paintGauges();
+    if (!settled) animationFrame = requestAnimationFrame(stepGauges);
+    else animationTime = 0;
+  }
+
+  function setGaugeTargets(delta) {
     const paused = hud.hidden || document.hidden || reducedMotion.matches;
-    if (!paused && value === rpmTarget) return;
+    const changed = gaugeNames.some(name => name in delta
+      && clamp(number(delta[name], 0), 0, gauges[name].maximum) !== gauges[name].target);
+    if (!paused && !changed) return;
     const now = performance.now();
-    // Integrate up to receipt using the old target before switching. This
-    // preserves velocity even when packets land between animation frames.
-    if (!paused && rpmFrame !== null) advanceRpm(now);
-    rpmTarget = value;
+    // Advance the old targets to packet arrival before retargeting. Restarting
+    // easing on every sample would make rapidly arriving readings feel uneven.
+    if (!paused && animationFrame !== null) advanceGauges(now);
+    for (const name of gaugeNames) {
+      if (name in delta) {
+        state[name] = clamp(number(delta[name], 0), 0, gauges[name].maximum);
+        gauges[name].target = state[name];
+      }
+    }
     if (paused) {
-      stopRpm();
-      rpmDisplay = rpmTarget;
-      if (!hud.hidden && !document.hidden) paintRpm();
+      snapGauges();
+      if (!hud.hidden && !document.hidden) paintGauges();
       return;
     }
-    if (rpmFrame === null && Math.abs(rpmTarget - rpmDisplay) >= .015) {
-      rpmTime = now;
-      rpmFrame = requestAnimationFrame(stepRpm);
+    if (animationFrame === null) {
+      animationTime = now;
+      animationFrame = requestAnimationFrame(stepGauges);
     }
   }
 
-  function syncRpmVisibility() {
-    if (hud.hidden || document.hidden) {
-      stopRpm();
-      rpmDisplay = rpmTarget;
-    } else if (rpmFrame === null) {
-      rpmDisplay = rpmTarget;
-      paintRpm();
+  function syncGaugeVisibility() {
+    if (hud.hidden || document.hidden) snapGauges();
+    else if (animationFrame === null) {
+      snapGauges();
+      paintGauges();
     }
   }
 
-  document.addEventListener('visibilitychange', syncRpmVisibility);
-  reducedMotion.addEventListener('change', () => setRpmTarget(rpmTarget));
+  document.addEventListener('visibilitychange', syncGaugeVisibility);
+  reducedMotion.addEventListener('change', () => setGaugeTargets(state));
 
   function drawTicks() {
     const ns = 'http://www.w3.org/2000/svg';
@@ -150,10 +166,9 @@
   }
 
   function render(delta) {
-    if ('speed' in delta) text(refs.speed, String(clamp(Math.round(number(delta.speed, 0)), 0, 999)));
+    if ('speed' in delta || 'rpm' in delta) setGaugeTargets(delta);
     if ('rpm' in delta) {
       state.rpm = clamp(number(delta.rpm, 0), 0, 100);
-      setRpmTarget(state.rpm);
       hud.classList.toggle('redline', state.rpm >= 85);
     }
     if ('gear' in delta) text(refs.gear, /^[NR0-9]$|^1[0-9]$/.test(String(delta.gear)) ? String(delta.gear) : 'N');
@@ -177,9 +192,24 @@
   }
 
   function configure(data) {
-    if ('unit' in data) config.unit = data.unit === 'mph' ? 'mph' : 'kmh';
+    if ('unit' in data) {
+      const unit = data.unit === 'mph' ? 'mph' : 'kmh';
+      if (unit !== config.unit) {
+        // Convert the current motion too: switching units must not animate a
+        // fictitious deceleration from the old numeric reading to the new one.
+        if (animationFrame !== null) advanceGauges(performance.now());
+        const factor = unit === 'mph' ? 2.2369362921 / 3.6 : 3.6 / 2.2369362921;
+        const speed = gauges.speed;
+        speed.target = clamp(speed.target * factor, 0, speed.maximum);
+        speed.display = clamp(speed.display * factor, 0, speed.maximum);
+        speed.velocity *= factor;
+        state.speed = speed.target;
+        config.unit = unit;
+        if (!hud.hidden && !document.hidden) paintGauges();
+      }
+    }
     text(refs.unit, config.unit === 'mph' ? 'MPH' : 'KM/H');
-    if ('scale' in data) style('--scale', clamp(number(data.scale, 1), .65, 1.5));
+    if ('scale' in data) style('--scale', clamp(number(data.scale, .85), .65, 1.5));
     for (const key of ['right', 'bottom']) {
       if (key in data) style(`--${key}`, `${clamp(number(data[key], 0), 0, 4000)}px`);
     }
@@ -203,7 +233,7 @@
     if (!data || typeof data !== 'object') return;
     if (data.action === 'visibility') {
       hidden(hud, data.visible !== true);
-      syncRpmVisibility();
+      syncGaugeVisibility();
     }
     if (data.action === 'config') configure(data);
     if (data.action === 'telemetry') {

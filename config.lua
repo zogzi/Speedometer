@@ -1,14 +1,14 @@
 Config = {}
 
 Config.Unit = 'kmh' -- 'kmh' or 'mph'; /speedunit switches locally for this session
-Config.Scale = 1.0 -- 0.65–1.5
+Config.Scale = 0.85 -- 0.65–1.5; default footprint: 306 × 272 pixels
 Config.Position = { right = 32, bottom = 28 } -- pixels, before game safe-zone inset
 Config.Accent = '#e7edf0'
 Config.MaxRpm = 9000 -- visual dial scale; GTA provides normalized RPM, not real RPM
 Config.ShowPassenger = false
 Config.HideWhenPaused = true
 
-Config.UpdateInterval = 100 -- milliseconds for speed/gear/RPM; browser smooths between samples (minimum 50)
+Config.UpdateInterval = 0 -- 0 = every game frame for maximum fluidity; 100 = lower-cost sampling
 Config.IdleInterval = 750 -- milliseconds outside supported vehicles
 Config.StatusInterval = 500 -- engine health and lights polling
 

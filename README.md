@@ -4,7 +4,9 @@ A standalone, Forza-inspired FiveM vehicle HUD. No ESX, QBCore, database, npm bu
 
 ![Compact zz-speedomter HUD, rendered with mocked FiveM messages](docs/preview.png)
 
-Version 1.6.0 reuses the vehicle's velocity vector for speed and reverse, removing one native call from each steady-driving update. Parked checks, 100-ms updates and smooth RPM interpolation retain their cadence. The larger 320-pixel dial and 26-pixel icons keep the neutral silver-white/charcoal palette, with evenly spaced curved icons, tighter dial shading and crisper text. Fuel, branding, captions and boxes remain absent.
+[60-fps motion preview with simulated telemetry](docs/motion.mp4)
+
+Version 1.7.0 makes the HUD 15% smaller and prioritizes fluid motion: speed digits now count smoothly between readings, and both speed and RPM retain fractional precision with telemetry every game frame. One shared browser animation preserves motion across readings. The default footprint is 306 × 272 pixels, with the same neutral colors and unboxed side icons. This deliberately uses more active CPU/NUI work than 1.6.0's 100-ms sampling.
 
 See [INSTALL.md](INSTALL.md) for the step-by-step server owner's guide and [PERFORMANCE.md](PERFORMANCE.md) for the local optimization and visual review, including what still needs in-game validation.
 
@@ -38,13 +40,13 @@ Edit `config.lua` and restart the resource to apply configuration changes:
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `Unit` | `'kmh'` | Initial speed units |
-| `Scale` | `1.0` | HUD size, clamped to 0.65–1.5 |
+| `Scale` | `0.85` | HUD size, clamped to 0.65–1.5 |
 | `Position` | right 32, bottom 28 | Pixel offset, plus GTA safe-zone inset |
 | `Accent` | `'#e7edf0'` | Six-digit hex accent color |
 | `MaxRpm` | `9000` | Estimated RPM tick scale; falls back to 9000 when omitted |
 | `ShowPassenger` | `false` | Also display for passengers |
 | `HideWhenPaused` | `true` | Hide when the pause menu is open |
-| `UpdateInterval` | `100` | Combined speed, gear, RPM and vehicle checks in milliseconds; minimum 50 |
+| `UpdateInterval` | `0` | `0`: sample every game frame for fluidity; `100`: optional lower-cost mode |
 | `IdleInterval` | `750` | Vehicle detection interval on foot |
 | `StatusInterval` | `500` | Engine health and light polling interval |
 | `Classes` | Road classes | Eligible GTA vehicle classes |
@@ -74,14 +76,13 @@ local belted = exports['zz-speedomter']:IsSeatbeltOn()
 
 ## Performance and validation
 
-Speed, gear, RPM, engine-running state and vehicle eligibility share a 100-ms loop. During steady movement, one velocity-vector read supplies both the full 3D speed magnitude and reverse direction. At rest, one scalar speed read detects motion; the first moving tick also reads the vector, so acceleration is detected without another polling interval. Engine health and lights update every 500 ms. Each active tick sends at most one telemetry packet, containing only changed fields. RPM is rounded to half-percent increments to avoid tiny idle jitter. Hidden, paused or suppressed HUDs do not sample telemetry. There is no fuel integration or independent RPM worker; legacy `RpmInterval` and fuel settings are ignored.
+Speed, gear, RPM, engine-running state and vehicle eligibility share one loop. `Config.UpdateInterval = 0` uses FiveM's `Wait(0)` to read each game frame. Speed and RPM are sent with fractional precision, together in one changed-field packet. This gives the browser fresh targets without the old integer-speed and half-percent-RPM steps. Health and lights still update about every 500 ms. Hidden/paused HUDs skip telemetry and validate the vehicle every 100 ms; on-foot checks sleep 750 ms.
 
-The browser retains smooth, time-based arc interpolation through one on-demand `requestAnimationFrame` callback. Critically damped motion uses a 56-ms time scale, tuned for the default 100-ms telemetry interval. It advances to each packet’s receipt time before retargeting, preserving position and velocity even when packets arrive between frames. The spring adds roughly 110 ms of smoothing delay during a steady ramp, in addition to sampling delay; this short display delay smooths out the old surge-and-slow pattern. Animation stops when settled or hidden. Reduced-motion mode snaps directly to readings. Tick marks are rebuilt only when `MaxRpm` changes.
+One `requestAnimationFrame` callback animates both speed and RPM using exact critically damped interpolation. Incoming readings preserve the current position and velocity instead of restarting an easing animation. The speed display rounds only the animated value to whole KM/H or MPH; gear stays discrete. Both gauges use a 56-ms spring time scale, adding roughly 110 ms of smoothing delay during a steady ramp. The RPM arc uses finer stroke precision. Switching units converts the displayed speed and its motion immediately, avoiding a false braking animation. Hidden/backgrounded or settled gauges stop animating, and reduced-motion mode snaps to readings.
 
-Compared with 1.3.0, default RPM reads fall from 625 to 100 in a deterministic 10-second simulation (84% fewer). Separate RPM packets and entity checks are removed. This measures work removed, not a percentage reduction in real CPU time. `Config.UpdateInterval = 100` is the recommended setting; lower values increase sampling and messaging cost.
+Sampling every game frame intentionally increases native calls and NUI traffic compared with 1.6.0. Set `Config.UpdateInterval = 100` to restore the old sampling cadence while retaining the new browser smoothing. It is an optional tradeoff, not the default for this fluidity-focused release. Velocity reuse, cached vehicle class, slower status polling and unchanged-field suppression still apply. There is no fuel integration or separate RPM worker; legacy `RpmInterval` and fuel settings are ignored.
 
-The optional belt worker now calls only `DisableControlAction` per frame. Vehicle, seat and death validation share the main poll; a forced exit or vehicle switch releases the belt within one active polling interval (100 ms by default). There is no frame worker when unbelted. For an indicator without exit blocking, set `Config.Seatbelt.blockExit = false`. See `PERFORMANCE.md` for the work budget and in-game profiler checks.
-
+The optional belt worker calls only `DisableControlAction` per frame. Vehicle/seat/death validation shares the main poll. A forced exit or switch clears belt state at the next vehicle check, and the worker exits on its next frame. For an indicator without exit blocking, set `Config.Seatbelt.blockExit = false`. See [PERFORMANCE.md](PERFORMANCE.md) for validation and in-game profiling.
 The NUI startup handshake has a two-second request timeout and up to four retries, with increasing delays. Those timers stop after success; they are separate from vehicle updates.
 
 No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server, hardware, frame rate, and other resources. Use `resmon 1` in FiveM to check this resource on foot, driving, and belted. Lower `UpdateInterval` values increase native calls and NUI traffic.
@@ -90,7 +91,7 @@ No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server
 
 The NUI activates only when FiveM provides `GetParentResourceName`. Opening the HTML in a normal browser, including with `?preview`, stays blank. There are no full-screen presentation backgrounds, forms, or demo controls. Tests mock the FiveM interface externally; that harness is not part of the runtime resource.
 
-The default footprint is approximately 360 × 320 pixels, including the side icons. Only local dial shading paints a background; icons and gear have no boxes. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
+The default footprint is approximately 306 × 272 pixels, including the side icons. Only local dial shading paints a background; icons and gear have no boxes. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
 
 ### Automated checks
 

@@ -56,28 +56,33 @@ Edit `config.lua`, then run `restart zz-speedomter` from the server console:
 
 ```lua
 Config.Unit = 'mph' -- or 'kmh'
-Config.Scale = 1.0
+Config.Scale = 0.85
 Config.Position = { right = 32, bottom = 28 }
 Config.Accent = '#e7edf0'
+Config.UpdateInterval = 0 -- every game frame for the smoothest readings
 ```
 
 If you already use a speedometer, disable its speedometer component in that resource's settings to prevent overlapping displays. If another resource handles seatbelts, set `Config.Seatbelt.enabled = false` here so both scripts do not compete for the exit control.
 
 ## Updating from an older version
 
-Replace `fxmanifest.lua`, `client.lua`, and the **whole `web` folder** together, then run `restart zz-speedomter`. Keep your custom `config.lua`; the detailed dial now renders at approximately 360 × 320 with `Config.Scale = 1.0`. Icons are now 26 pixels at the default scale. Keep `Config.Scale = 1.0` for the new larger size, or lower it for a smaller HUD. Optional `Config.MaxRpm = 9000` controls the RPM tick labels; older configs without this field use 9000 automatically.
+Replace `fxmanifest.lua`, `client.lua`, and the **whole `web` folder** together. Use the new `config.lua`, or merge these settings into your custom configuration:
 
-Version 1.1.0 removes the dark color scheme responsible for the grey embedded-browser canvas. Do not mix old CSS or HTML with the updated files. If the previous screen persists after restarting, reconnect and confirm that only the updated copy of the resource is running.
+```lua
+Config.Scale = 0.85
+Config.UpdateInterval = 0
+Config.Accent = '#e7edf0'
+```
 
-Version 1.4.0 combines RPM, speed and gear updates into one loop, removing the expensive 16-ms RPM sampler from 1.3.0. Keep `Config.UpdateInterval = 100` for the recommended performance setting. Old `Config.RpmInterval` and fuel settings are ignored, so keeping your custom config cannot accidentally restore the fast worker. The browser still interpolates the RPM arc. SPEED/GEAR labels, ZZ branding and boxes are removed; icons follow the side of the dial.
+Then run `restart zz-speedomter`. Keeping an old `Scale = 1.0` or `UpdateInterval = 100` preserves the old size or sampling interval; these explicit custom values are not overwritten automatically.
 
-Seatbelt exit blocking uses one native per frame. Forced exits, vehicle changes and death clear belt state on the next vehicle poll, within 100 ms by default. To retain the belt indicator with no frame worker, set `Config.Seatbelt.blockExit = false`; normal vehicle exit will then be allowed while belted.
+Version 1.7.0 reduces the default footprint from 360 × 320 to 306 × 272 pixels. The dial is 272 pixels across, and side icons are about 22 pixels. Both the speed digits and RPM arc interpolate continuously. Speed and RPM now retain fractional readings and sample every game frame, prioritizing smoothness over the previous CPU budget. Whole-number speed is rounded only when drawn. Unit changes convert immediately without a false acceleration/braking transition; gear changes remain immediate.
 
-Version 1.4.1 adds static dark outlines to the side icons for bright-background readability. Its Lua sampling and performance settings are unchanged from 1.4.0.
+You can still select `Config.UpdateInterval = 100` for the earlier lower-cost sampling cadence, with the new smoothing retained. No independent RPM worker is used. Legacy fuel and `RpmInterval` settings remain ignored. Optional `MaxRpm` defaults to 9000, and older custom accent colors remain valid.
 
-Version 1.5.0 increases the dial and icon size and retunes RPM interpolation for the existing 100-ms readings. Replace the complete `web` folder and `fxmanifest.lua`, then restart. Keep your current `client.lua` and polling settings from 1.4.x; no faster sampler is needed. Smooth motion adds roughly 110 ms of smoothing delay during a steady RPM ramp, in addition to sampling delay. Set `Config.Accent = '#e7edf0'` in an older custom config to use the new silver-white palette; an old green accent remains a valid custom override.
+The transparent page and grey-screen fix remain. Do not mix old CSS or HTML with the updated files. If the previous display persists after restarting, reconnect and confirm that only the updated copy of the resource is running.
 
-Version 1.6.0 also optimizes speed/direction sampling and clears cached class data when a vehicle disappears. Replace **`client.lua`**, `fxmanifest.lua` and the complete `web` folder together. Your existing 1.5.0 config remains compatible; size, neutral colors and RPM smoothing retain their settings.
+Seatbelt exit blocking uses one native per frame. Vehicle changes, exits and death clear belt state at the next vehicle poll; the belt worker then ends at its next frame. Set `Config.Seatbelt.blockExit = false` for an indicator without exit blocking.
 
 ## Troubleshooting
 
@@ -90,4 +95,4 @@ Version 1.6.0 also optimizes speed/direction sampling and clears cached class da
 | Belt key does nothing | Check the player's saved FiveM key mapping; it overrides the configured default. |
 | Grey screen over the game | Replace the complete `web` folder with version 1.1.0 or newer; restart the resource and reconnect if necessary. |
 
-For performance verification, open the client **F8 console** and run `resmon 1`. Compare `zz-speedomter` while on foot, driving, and belted. Run `resmon 0` when finished. The resource is designed to minimize work, but actual CPU time and visual integration must be checked on your server and hardware.
+For performance verification, open the client **F8 console** and run `resmon 1`. Compare `zz-speedomter` while on foot, driving, and belted. Run `resmon 0` when finished. This version prioritizes fluidity and performs more active work than 1.6.0. Actual CPU time and visual integration must be checked on your server and hardware.

@@ -35,7 +35,7 @@ def main():
             test.send(action="visibility", visible=scenario != "hidden")
             test.send(action="telemetry", speed=124, rpm=52, gear="4", engine=True,
                       belt=True, beltAvailable=True, lights=1)
-            page.wait_for_timeout(600)  # Let the initial transition settle.
+            page.wait_for_timeout(1200)  # Let the initial transition settle.
             frames = page.evaluate("profileFrames")
             before = metrics()
             start = time.perf_counter()
@@ -44,10 +44,10 @@ def main():
                     let tick = 0;
                     window.profileTimer = setInterval(() => {
                         tick++;
-                        const data = {action:'telemetry', rpm:20+(tick%20)*3.5};
-                        if (scenario === 'driving') data.speed = 40+tick;
+                        const data = {action:'telemetry', rpm:20+(tick%120)*.58};
+                        if (scenario === 'driving') data.speed = 40+tick/6;
                         window.dispatchEvent(new MessageEvent('message', {data}));
-                    }, 100);
+                    }, 16);
                 }""", scenario)
             page.wait_for_timeout(3000)
             if scenario in ["rpm_only", "driving"]:
@@ -55,14 +55,14 @@ def main():
             after = metrics()
             elapsed = time.perf_counter() - start
             row = {"scenario": scenario, "wall_seconds": round(elapsed, 3),
-                   "rpm_animation_callbacks": page.evaluate("profileFrames") - frames}
+                   "gauge_animation_callbacks": page.evaluate("profileFrames") - frames}
             for key in ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration"]:
                 row[key + "_ms_per_second"] = round((after[key] - before[key]) * 1000 / elapsed, 3)
             for key in ["LayoutCount", "RecalcStyleCount"]:
                 row[key] = after[key] - before[key]
             results.append(row)
         print(json.dumps({"browser": HudTests.browser.version,
-                          "viewport": "1920x1080", "sample_ms": 100,
+                          "viewport": "1920x1080", "sample_ms": 16,
                           "results": results}, indent=2))
     finally:
         test.tearDown()

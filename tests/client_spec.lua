@@ -64,7 +64,7 @@ local function step(duration)
         now = nextTask.due
         local ok, delay = coroutine.resume(nextTask.co)
         assert(ok, delay)
-        nextTask.due = coroutine.status(nextTask.co) == 'dead' and math.huge or now + math.max(1, delay)
+        nextTask.due = coroutine.status(nextTask.co) == 'dead' and math.huge or now + (delay == 0 and 16 or math.max(1, delay))
     end
     now = target
 end
@@ -88,6 +88,11 @@ end
 
 assert(loadfile('fxmanifest.lua')) -- parse the manifest as Lua without invoking its DSL
 dofile('config.lua')
+local defaultInterval = Config.UpdateInterval
+check(defaultInterval == 0 and Config.Scale == 0.85, 'shipping defaults prioritize per-frame fluidity and a smaller HUD')
+-- Keep the existing 100-ms mode's work-budget/lifecycle coverage, then exercise
+-- the new frame-based default separately below. Wait(0) models a 16-ms frame.
+Config.UpdateInterval = 100
 dofile('client.lua')
 
 step(0)
@@ -128,16 +133,16 @@ step(100)
 
 car.rpm = 0.5213
 step(100)
-check(ui.rpm == 52, 'sub-half-percent RPM jitter does not generate extra readings')
+check(math.abs(ui.rpm - 52.13) < .000001, 'small fractional RPM changes reach the smoother without quantization')
 car.rpm = 0.527
 step(100)
-check(ui.rpm == 52.5, 'meaningful RPM changes retain half-percent detail')
+check(math.abs(ui.rpm - 52.7) < .000001, 'RPM retains native precision')
 car.rpm = 0.52
 step(100)
 
 commands.speedunit(nil, { 'mph' })
 step(100)
-check(latest('config').unit == 'mph' and ui.speed == 22, 'MPH conversion and unit configuration agree')
+check(latest('config').unit == 'mph' and math.abs(ui.speed - 22.369362921) < .000001, 'MPH conversion and unit configuration agree')
 local configCount = count('config')
 commands.speedunit(nil, { 'bad' })
 check(count('config') == configCount, 'invalid unit command is ignored')
@@ -241,6 +246,7 @@ local function fresh(configure, vehicleState)
         health = 1000, lights = 0, beams = 0, fuel = 68 }
     for key, value in pairs(vehicleState or {}) do car[key] = value end
     dofile('config.lua')
+    Config.UpdateInterval = 100
     if configure then configure() end
     dofile('client.lua')
     callbacks.ready({}, function() end)
@@ -258,11 +264,11 @@ check(api.IsSeatbeltOn() and disabled == 0 and #tasks == 1, 'indicator-only belt
 
 fresh()
 api.SetSeatbelt(true)
-step(2)
+step(16)
 local oldPedReads, oldDeathReads, oldVehicleReads, oldDisabled = pedReads, deathReads, vehicleReads, disabled
-step(10) -- Between main polls: isolates ten frame-worker iterations.
+step(48) -- Between 100-ms main polls: isolates three 16-ms frame-worker iterations.
 check(pedReads == oldPedReads and deathReads == oldDeathReads
-    and vehicleReads == oldVehicleReads and disabled - oldDisabled == 10,
+    and vehicleReads == oldVehicleReads and disabled - oldDisabled == 3,
     'belt worker uses only one native per frame, with no repeated vehicle checks')
 car.dead = true
 step(100)
@@ -279,14 +285,14 @@ check(classReads == 1 and vectorReads > 0 and gearReads > 0,
     'moving vehicle resumes gear/vector reads without repeated class queries')
 
 fresh(nil, { speed = 13, velocityY = 4, motionVector = { x = 3, y = 4, z = 12 } })
-check(ui.speed == 47 and ui.gear == '3', 'speed includes sideways and vertical motion, not just forward velocity')
+check(math.abs(ui.speed - 46.8) < .000001 and ui.gear == '3', 'speed includes sideways and vertical motion, not just forward velocity')
 local scalarBefore, vectorsBefore = speedReads, vectorReads
 step(1000)
 check(speedReads == scalarBefore and vectorReads - vectorsBefore == 10,
     'moving vehicles reuse one vector native for speed and reverse each tick')
 car.motionVector.y = -4
 step(100)
-check(ui.speed == 47 and ui.gear == 'R', 'reverse retains full 3D speed magnitude')
+check(math.abs(ui.speed - 46.8) < .000001 and ui.gear == 'R', 'reverse retains full 3D speed magnitude')
 car.speed, car.velocityY, car.motionVector = 0, 0, nil
 step(100)
 scalarBefore, vectorsBefore = speedReads, vectorReads
@@ -328,7 +334,7 @@ check(latest('visibility').visible, 'pause visibility option is honored')
 fresh(function()
     Config.Unit = 'mph'
 end, { fuel = 30 })
-check(ui.fuel == nil and ui.speed == 22
+check(ui.fuel == nil and math.abs(ui.speed - 22.369362921) < .000001
     and latest('config').unit == 'mph', 'initial MPH configuration works without fuel telemetry')
 
 fresh(function() Config.MaxRpm = nil end)
@@ -375,10 +381,47 @@ step(750)
 check(ui.rpm == 63 and rpmReads == previousRpmReads + 1 and #tasks == 1,
     'shared sampler safely recovers after a vehicle temporarily disappears')
 
-fresh(function() Config.UpdateInterval = 1 end)
-previousVectorReads = vectorReads
+fresh(function() Config.UpdateInterval = defaultInterval end)
+previousVectorReads, previousRpmReads = vectorReads, rpmReads
+local previousPackets = count('telemetry')
+for i = 1, 100 do
+    car.speed, car.rpm = 10 + i * .001, .52 + i * .00001
+    step(16)
+end
+check(vectorReads - previousVectorReads == 100 and rpmReads - previousRpmReads == 100,
+    'default mode samples speed and RPM on every simulated game frame')
+check(count('telemetry') - previousPackets == 100 and #tasks == 1,
+    'each changed frame sends one combined packet without a separate RPM worker')
+check(math.abs(ui.speed - 36.36) < .000001 and math.abs(ui.rpm - 52.1) < .000001,
+    'fractional speed and tiny RPM changes survive the complete telemetry path')
+car.paused = true
+step(16)
+local pausedReads, pausedVehicles = rpmReads, vehicleReads
 step(1000)
-check(vectorReads - previousVectorReads == 20, 'configured active interval is safely bounded to 50 ms')
+check(rpmReads == pausedReads and vehicleReads - pausedVehicles == 10,
+    'frame-based mode backs off to 100-ms vehicle checks while paused')
+car.paused = false
+step(100)
+check(latest('visibility').visible and rpmReads > pausedReads,
+    'frame-based telemetry resumes after closing the pause menu')
+car.engine = false
+step(16)
+check(ui.rpm == 0 and ui.gear == 'N', 'engine-off readings reach the frame-based smoother immediately')
+api.SetSeatbelt(true)
+step(16)
+car.vehicle = 20
+step(32)
+check(not api.IsSeatbeltOn() and coroutine.status(tasks[2].co) == 'dead',
+    'vehicle changes clear belt state in frame-based mode')
+fresh(function() Config.UpdateInterval = nil; Config.Scale = nil end)
+previousRpmReads = rpmReads
+step(160)
+check(rpmReads - previousRpmReads == 10 and latest('config').scale == .85,
+    'missing settings fall back to per-frame sampling and the compact scale')
+fresh(function() Config.UpdateInterval = -20 end)
+previousRpmReads = rpmReads
+step(160)
+check(rpmReads - previousRpmReads == 10, 'negative intervals clamp to a game-frame yield')
 
 fresh()
 car.exists = false
@@ -400,9 +443,9 @@ api.SetSeatbelt(true)
 step(2)
 car.vehicle = 20
 local controlsBeforeSwitch = disabled
-step(100)
-check(not api.IsSeatbeltOn() and disabled - controlsBeforeSwitch <= 100
-    and coroutine.status(tasks[3].co) == 'dead', 'shared vehicle poll clears belt within one active interval after a forced switch')
+step(116) -- One 100-ms validation interval plus the next frame-worker yield.
+check(not api.IsSeatbeltOn() and disabled - controlsBeforeSwitch <= 7
+    and coroutine.status(tasks[3].co) == 'dead', 'shared vehicle poll releases the belt worker by the next frame after validation')
 controlsBeforeSwitch = disabled
 step(100)
 check(disabled == controlsBeforeSwitch, 'no exit suppression remains after the switch is detected')

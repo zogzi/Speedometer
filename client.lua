@@ -7,7 +7,7 @@ local belted, beltAvailable = false, false
 local beltThreadRunning = false
 local lastPayload, lastStatusAt = {}, 0
 local unit = Config.Unit == 'mph' and 'mph' or 'kmh'
-local interval = math.max(50, tonumber(Config.UpdateInterval) or 100)
+local interval = math.max(0, tonumber(Config.UpdateInterval) or 0)
 local idleInterval = math.max(interval, tonumber(Config.IdleInterval) or 750)
 local statusInterval = math.max(interval, tonumber(Config.StatusInterval) or 500)
 local status = {}
@@ -60,7 +60,7 @@ local function sendConfig()
     SendNUIMessage({
         action = 'config',
         unit = unit,
-        scale = clamp(tonumber(Config.Scale) or 1, 0.65, 1.5),
+        scale = clamp(tonumber(Config.Scale) or 0.85, 0.65, 1.5),
         right = math.max(0, tonumber(Config.Position.right) or 32),
         bottom = math.max(0, tonumber(Config.Position.bottom) or 28),
         safeZone = (1 - safeZone) / 2,
@@ -158,11 +158,11 @@ CreateThread(function()
             moving = speed > 0.5
             local gear = status.engine and GetVehicleCurrentGear(vehicle) or 0
             local reversing = moving and velocity.y < -0.5
-            -- Half-percent detail avoids sending idle RPM jitter. Interpolation
-            -- stays in the browser; RPM shares one packet with speed and gear.
+            -- Preserve fractional readings for continuous browser interpolation.
+            -- Speed and RPM share one packet, sampled every game frame by default.
             payload.rpm = status.engine
-                and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 200 + 0.5) / 2 or 0
-            payload.speed = math.floor(speed * (unit == 'mph' and 2.2369362921 or 3.6) + 0.5)
+                and clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 100 or 0
+            payload.speed = speed * (unit == 'mph' and 2.2369362921 or 3.6)
             payload.gear = reversing and 'R' or ((not status.engine or gear == 0) and 'N' or tostring(gear))
             payload.engine = status.engine
             payload.engineWarning = status.engineWarning
@@ -180,7 +180,8 @@ CreateThread(function()
             end
             if delta then SendNUIMessage(delta) end
         end
-        Wait(eligible and interval or idleInterval)
+        -- Hidden/paused HUDs still validate vehicle/belt state, without a frame poll.
+        Wait(shouldShow and interval or (eligible and math.max(100, interval) or idleInterval))
     end
 end)
 
