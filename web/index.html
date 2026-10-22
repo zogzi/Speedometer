@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>zz-speedomter · Vehicle HUD</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-engine" viewBox="0 0 24 24"><path d="M7 7h9l3 3h2v8h-4l-2 2H7l-3-4V9h3Zm3-4h5M12.5 3v4M1 10v6M1 13h3"/></symbol>
+    <symbol id="icon-belt" viewBox="0 0 24 24"><circle cx="12" cy="4" r="2"/><path d="m8 9 2-1h4l2 1 1 9M7 18l1-9M9 14h6M9 18v3m6-3v3M5 5l14 14M5 19l4-5"/></symbol>
+    <symbol id="icon-light" viewBox="0 0 24 24"><path d="M13 5c-5 0-8 2-8 7s3 7 8 7V5ZM17 6l5-2m-5 6 5-1m-5 5h5m-5 4 5 1"/></symbol>
+    <symbol id="icon-fuel" viewBox="0 0 24 24"><path d="M4 21V4h10v17M3 21h13M7 7h4v5H7ZM14 12h2a2 2 0 0 1 2 2v3a2 2 0 0 0 4 0V9l-4-4m1 1v4h3"/></symbol>
+  </svg>
+
+  <main id="hud" class="hud" hidden aria-label="Vehicle instruments">
+    <div class="status-row">
+      <span class="wordmark">ZZ<span class="wordmark-dot"></span></span>
+      <div class="indicators">
+        <span id="engine" class="indicator" role="img" aria-label="Engine off" title="Engine"><svg><use href="#icon-engine"/></svg></span>
+        <span id="belt" class="indicator" role="img" aria-label="Seatbelt unfastened" title="Seatbelt"><svg><use href="#icon-belt"/></svg></span>
+        <span id="lights" class="indicator" role="img" aria-label="Lights off" title="Lights"><svg><use href="#icon-light"/></svg></span>
+      </div>
+    </div>
+
+    <div class="instrument">
+      <svg class="dial" viewBox="0 0 320 320" aria-hidden="true">
+        <defs><radialGradient id="dial-shade"><stop offset="0" stop-color="#071012" stop-opacity=".82"/><stop offset=".7" stop-color="#071012" stop-opacity=".58"/><stop offset="1" stop-color="#071012" stop-opacity="0"/></radialGradient></defs>
+        <circle cx="160" cy="160" r="155" fill="url(#dial-shade)"/>
+        <g transform="rotate(135 160 160)" fill="none" pathLength="100">
+          <circle class="arc-track" cx="160" cy="160" r="138" pathLength="100" stroke-dasharray="75 100"/>
+          <circle class="red-zone" cx="160" cy="160" r="138" pathLength="100" stroke-dasharray="12 100" stroke-dashoffset="-63"/>
+          <circle id="rpm-arc" class="rpm-arc" cx="160" cy="160" r="138" pathLength="100" stroke-dasharray="0 100"/>
+          <circle class="inner-track" cx="160" cy="160" r="127" pathLength="100" stroke-dasharray="75 100"/>
+        </g>
+        <g id="ticks"></g>
+      </svg>
+      <div class="speed-block">
+        <span class="overline">SPEED</span>
+        <div id="speed" class="speed">0</div>
+        <span id="unit" class="unit">KM/H</span>
+      </div>
+      <div class="gear-block"><span id="gear" class="gear">N</span><span class="overline">GEAR</span></div>
+      <div class="rpm-caption"><span id="rpm-value">0.0</span><span>RPM × 1000</span></div>
+    </div>
+
+    <div id="fuel" class="fuel">
+      <svg class="fuel-icon" aria-hidden="true"><use href="#icon-fuel"/></svg>
+      <div class="fuel-meter"><div class="fuel-labels"><span>FUEL</span><span id="fuel-value">—</span></div><div class="fuel-track"><div id="fuel-fill" class="fuel-fill"></div></div></div>
+      <span id="fuel-warning" class="fuel-warning" hidden>LOW</span>
+    </div>
+  </main>
+
+  <section id="preview" class="preview" hidden aria-label="Browser preview controls">
+    <div class="preview-top"><span class="preview-brand">ZZ<span>/</span></span><span class="preview-tag">STANDALONE FIVEM HUD</span></div>
+    <h1>Every rev.<br><span>Nothing extra.</span></h1>
+    <p>A focused instrument for the road ahead.<br>Light on resources. Right where you need it.</p>
+    <div class="preview-controls">
+      <div class="control-heading"><span>LIVE PREVIEW</span><span class="live-dot"></span></div>
+      <div class="presets"><button data-preset="cruise" class="selected">Cruise</button><button data-preset="redline">Redline</button><button data-preset="parked">Parked</button></div>
+      <label>Speed <output id="demo-speed-label">124</output><input id="demo-speed" type="range" min="0" max="320" value="124"></label>
+      <label>Engine <output id="demo-rpm-label">4.7k</output><input id="demo-rpm" type="range" min="0" max="100" value="52"></label>
+      <div class="demo-toggles"><button id="demo-unit">KM/H → MPH</button><button id="demo-belt" aria-pressed="true">Belt: on</button><button id="demo-lights" aria-pressed="false">Lights: off</button></div>
+    </div>
+    <span class="preview-footer">zz-speedomter <span>01 / VEHICLE INSTRUMENTS</span></span>
+  </section>
+</body>
+</html>
