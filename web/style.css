@@ -27,6 +27,8 @@ body { user-select: none; }
 #belt { left: -1px; top: 88px; }
 #lights { left: -10px; top: 140px; }
 .indicator svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* Static outlines preserve contrast over bright scenery without filter layers. */
+.icon-outline { stroke: #071012; stroke-width: 3.8; opacity: .9; }
 .indicator.active { color: var(--accent); opacity: 1; }
 #engine.active { color: #62f5bb; }
 .indicator.warning { color: var(--warning); opacity: 1; }

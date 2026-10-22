@@ -1,4 +1,6 @@
-# zz-speedomter 1.4.0 performance review
+# zz-speedomter 1.4.1 performance review
+
+See [REVIEW.md](REVIEW.md) for the guide/source comparison, visual contrast fix and local Chromium measurements. Version 1.4.1 retains the 1.4.0 Lua work budget.
 
 ## Changes prompted by the reported 0.14-ms cost
 

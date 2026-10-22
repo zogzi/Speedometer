@@ -1,0 +1,51 @@
+{
+  "browser": "154.0.8037.57",
+  "viewport": "1920x1080",
+  "sample_ms": 100,
+  "results": [
+    {
+      "scenario": "hidden",
+      "wall_seconds": 3.007,
+      "rpm_animation_callbacks": 0,
+      "TaskDuration_ms_per_second": 0.369,
+      "ScriptDuration_ms_per_second": 0.0,
+      "LayoutDuration_ms_per_second": 0.0,
+      "RecalcStyleDuration_ms_per_second": 0.0,
+      "LayoutCount": 0,
+      "RecalcStyleCount": 0
+    },
+    {
+      "scenario": "stable",
+      "wall_seconds": 3.008,
+      "rpm_animation_callbacks": 0,
+      "TaskDuration_ms_per_second": 0.096,
+      "ScriptDuration_ms_per_second": 0.0,
+      "LayoutDuration_ms_per_second": 0.0,
+      "RecalcStyleDuration_ms_per_second": 0.0,
+      "LayoutCount": 0,
+      "RecalcStyleCount": 0
+    },
+    {
+      "scenario": "rpm_only",
+      "wall_seconds": 3.011,
+      "rpm_animation_callbacks": 175,
+      "TaskDuration_ms_per_second": 59.009,
+      "ScriptDuration_ms_per_second": 11.945,
+      "LayoutDuration_ms_per_second": 0.0,
+      "RecalcStyleDuration_ms_per_second": 10.067,
+      "LayoutCount": 0,
+      "RecalcStyleCount": 174
+    },
+    {
+      "scenario": "driving",
+      "wall_seconds": 3.011,
+      "rpm_animation_callbacks": 176,
+      "TaskDuration_ms_per_second": 48.289,
+      "ScriptDuration_ms_per_second": 9.407,
+      "LayoutDuration_ms_per_second": 2.155,
+      "RecalcStyleDuration_ms_per_second": 9.094,
+      "LayoutCount": 29,
+      "RecalcStyleCount": 175
+    }
+  ]
+}

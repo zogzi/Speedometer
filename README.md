@@ -4,9 +4,11 @@ A standalone, Forza-inspired FiveM vehicle HUD. No ESX, QBCore, database, npm bu
 
 ![Compact zz-speedomter HUD, rendered with mocked FiveM messages](docs/preview.png)
 
-Version 1.4.0 prioritizes performance: RPM, speed and gear share one 100-ms telemetry loop and packet, with smooth browser interpolation between samples. Unboxed engine, belt and light icons follow the side of the dial. There is no branding, SPEED/GEAR caption, gear box or fuel display. The engine icon remains green when healthy/running and red when damaged.
+Version 1.4.1 prioritizes performance: RPM, speed and gear share one 100-ms telemetry loop and packet, with smooth browser interpolation between samples. Unboxed engine, belt and light icons follow the side of the dial. There is no branding, SPEED/GEAR caption, gear box or fuel display. The engine icon remains green when healthy/running and red when damaged. Static dark icon outlines improve contrast over bright scenery.
 
 See [INSTALL.md](INSTALL.md) for the step-by-step server owner's guide and [PERFORMANCE.md](PERFORMANCE.md) for the local optimization and visual review, including what still needs in-game validation.
+
+The [source and visual review](REVIEW.md) compares this implementation with FiveM/MDN guidance, qb-hud and ps-hud, including the differences in polling rate and seatbelt cost.
 
 ## Install
 
@@ -102,6 +104,8 @@ python tests/run_lua_tests.py
 
 # Requires Python Playwright, Pillow, and Chromium for development only:
 python tests/test_ui.py
+# Optional local Chromium work counters; not an in-game benchmark:
+python tests/profile_ui.py
 ```
 
 Lua tests exercise the actual client code with a deterministic scheduler and mocked FiveM natives. Browser tests exercise the real page and NUI message protocol in Chromium. They cannot replace in-game native integration or resource profiling.

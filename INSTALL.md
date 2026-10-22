@@ -73,6 +73,8 @@ Version 1.4.0 combines RPM, speed and gear updates into one loop, removing the e
 
 Seatbelt exit blocking uses one native per frame. Forced exits, vehicle changes and death clear belt state on the next vehicle poll, within 100 ms by default. To retain the belt indicator with no frame worker, set `Config.Seatbelt.blockExit = false`; normal vehicle exit will then be allowed while belted.
 
+Version 1.4.1 adds static dark outlines to the side icons for bright-background readability. Its Lua sampling and performance settings are unchanged from 1.4.0.
+
 ## Troubleshooting
 
 | Symptom | Check |
