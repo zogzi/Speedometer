@@ -4,6 +4,7 @@ Config.Unit = 'kmh' -- 'kmh' or 'mph'; /speedunit switches locally for this sess
 Config.Scale = 1.0 -- 0.65–1.5
 Config.Position = { right = 32, bottom = 28 } -- pixels, before game safe-zone inset
 Config.Accent = '#62f5bb'
+Config.MaxRpm = 9000 -- visual dial scale; GTA provides normalized RPM, not real RPM
 Config.ShowPassenger = false
 Config.HideWhenPaused = true
 

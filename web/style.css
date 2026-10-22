@@ -1,6 +1,7 @@
 :root {
   --accent: #62f5bb;
   --ink: #f6faf9;
+  --muted: #a4b3b1;
   --warning: #ffbc66;
   --danger: #ff626b;
   --scale: 1;
@@ -10,7 +11,7 @@
   --safe-y: 0vh;
   font-family: "Bahnschrift", "Arial", sans-serif;
   color: var(--ink);
-  /* A forced dark color-scheme makes embedded Chromium paint an opaque canvas. */
+  /* Keep the embedded canvas transparent; do not force a dark color scheme. */
   color-scheme: normal;
 }
 * { box-sizing: border-box; }
@@ -18,28 +19,44 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 body { user-select: none; }
 [hidden] { display: none !important; }
 .icon-library { position: absolute; width: 0; height: 0; overflow: hidden; }
-.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 280px; height: 300px; transform: scale(var(--scale)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
-.instrument { position: absolute; top: 0; left: 0; width: 280px; height: 280px; }
-.dial { display: block; width: 100%; height: 100%; }
-.arc-track { stroke: #203331; stroke-opacity: .85; stroke-width: 4; stroke-linecap: round; }
-.red-zone { stroke: var(--danger); stroke-opacity: .4; stroke-width: 4; }
-.rpm-arc { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; transition: stroke-dasharray 110ms linear, stroke 160ms; }
+.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 320px; height: 374px; transform: scale(calc(var(--scale) * .875)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
+.status-row { position: absolute; inset: 0 34px auto; height: 28px; padding: 0 10px; display: flex; justify-content: space-between; align-items: center; background: #071012b8; border: 1px solid #b9d1ca12; border-radius: 6px; }
+.wordmark { font-size: 11px; font-weight: 800; font-style: italic; letter-spacing: 3px; text-shadow: 0 1px 5px #000; }
+.wordmark-dot { display: inline-block; width: 4px; height: 4px; margin-left: 5px; background: var(--accent); border-radius: 50%; vertical-align: middle; }
+.indicators { display: flex; align-items: center; gap: 17px; }
+.indicator { display: flex; color: #82918e; opacity: .65; }
+.indicator svg, .fuel-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.indicator.active { color: var(--accent); opacity: 1; }
+.indicator.warning { color: var(--warning); opacity: 1; }
+.indicator.high { color: #78baff; opacity: 1; }
+.instrument { position: absolute; top: 25px; left: 0; width: 320px; height: 320px; }
+.dial { display: block; width: 100%; height: 100%; overflow: visible; }
+.arc-track { stroke: #203331; stroke-opacity: .85; stroke-width: 5; stroke-linecap: round; }
+.red-zone { stroke: var(--danger); stroke-opacity: .45; stroke-width: 5; }
+.rpm-arc { stroke: var(--accent); stroke-width: 5; stroke-linecap: round; transition: stroke 160ms; }
 .hud.redline .rpm-arc { stroke: var(--danger); }
-.speed-block { position: absolute; top: 90px; width: 100%; text-align: center; text-shadow: 0 2px 10px #071012; }
-.speed { height: 80px; line-height: 80px; font-size: 74px; font-weight: 700; letter-spacing: -3px; padding-right: 3px; }
-.unit { display: block; font-size: 10px; font-weight: 600; letter-spacing: 2px; color: #dce8e4; margin-top: 4px; padding-left: 2px; }
-.gear-block { position: absolute; top: 200px; width: 100%; display: flex; justify-content: center; }
-.gear { font-size: 20px; font-weight: 600; line-height: 26px; min-width: 27px; text-align: center; color: var(--accent); text-shadow: 0 1px 5px #071012; }
-.indicators { position: absolute; top: 237px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 13px; padding: 4px 8px; background: #07101299; border-radius: 12px; }
-.indicator { display: flex; color: #dce8e4; }
-.indicator svg, .fuel-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.indicator.warning { color: var(--warning); }
-.indicator.high { color: #78baff; }
-.fuel { position: absolute; bottom: 0; left: 44px; right: 44px; height: 22px; display: flex; align-items: center; gap: 9px; color: #dce8e4; padding: 4px 8px; background: #07101299; border-radius: 5px; }
-.fuel-icon { width: 13px; height: 14px; flex-shrink: 0; }
-#fuel-value { min-width: 27px; text-align: right; font-size: 9px; }
-.fuel-track { flex: 1; height: 2px; background: #78938866; overflow: hidden; border-radius: 2px; }
+.inner-track { stroke: #b9d1ca; stroke-opacity: .12; stroke-width: 1; }
+.tick { stroke: #d7e6e1; stroke-opacity: .3; stroke-width: 1; }
+.tick.major { stroke-opacity: .65; stroke-width: 1.5; }
+.tick-label { fill: #c3d3ce; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+.tick-label.red { fill: var(--danger); }
+.speed-block { position: absolute; top: 93px; width: 100%; text-align: center; text-shadow: 0 2px 12px #071012; }
+.overline { color: var(--muted); font-size: 9px; letter-spacing: 2px; font-weight: 600; }
+.speed { margin: 1px 0 0; height: 82px; line-height: 82px; font-size: 79px; font-weight: 700; letter-spacing: -4px; padding-right: 4px; }
+.unit { display: block; font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #dce8e4; margin-top: 5px; padding-left: 3px; }
+.gear-block { position: absolute; top: 230px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; }
+.gear { font-size: 21px; font-weight: 600; line-height: 30px; min-width: 30px; text-align: center; color: var(--accent); border: 1px solid #57736766; border-radius: 6px; background: #07151288; }
+.rpm-caption { position: absolute; top: 291px; width: 100%; display: flex; align-items: baseline; justify-content: center; gap: 7px; color: var(--muted); font-size: 9px; letter-spacing: 1.2px; text-shadow: 0 1px 3px #000; }
+.rpm-caption > :first-child { font-size: 13px; color: var(--ink); letter-spacing: .5px; }
+.fuel { position: absolute; bottom: 0; left: 34px; right: 34px; padding: 8px 10px; display: flex; align-items: center; gap: 12px; color: #c2d0cd; background: #071012b8; border: 1px solid #b9d1ca12; border-radius: 6px; }
+.fuel-icon { width: 18px; height: 22px; flex-shrink: 0; }
+.fuel-meter { flex: 1; }
+.fuel-labels { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 9px; letter-spacing: 1.5px; }
+#fuel-value { color: var(--ink); letter-spacing: .5px; }
+.fuel-track { height: 3px; background: #78938844; overflow: hidden; border-radius: 2px; }
 .fuel-fill { height: 100%; width: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform 350ms ease; }
 .fuel.low .fuel-fill { background: var(--warning); }
-.fuel.low { color: var(--warning); }
+.fuel.low .fuel-icon, .fuel-warning { color: var(--warning); }
+.fuel-warning { font-size: 8px; letter-spacing: 1px; }
+
 @media (prefers-reduced-motion: reduce) { .rpm-arc, .fuel-fill { transition: none; } }

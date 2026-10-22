@@ -5,6 +5,8 @@ local car = { vehicle = 0, class = 0, driver = 1, dead = false, paused = false,
     speed = 10, velocityY = 10, rpm = 0.52, gear = 3, engine = true,
     health = 1000, lights = 0, beams = 0, fuel = 68 }
 local fuelReads, disabled, vehicleReads, speedReads = 0, 0, 0, 0
+local pedReads, deathReads, classReads, vectorReads, gearReads = 0, 0, 0, 0, 0
+local lightReads = 0
 local safeZone, clockOffset = 0.9, 0
 
 function GetCurrentResourceName() return 'zz-speedomter' end
@@ -16,24 +18,27 @@ function exports(name, fn) api[name] = fn end
 function AddEventHandler(name, fn) events[name] = fn end
 function CreateThread(fn) tasks[#tasks + 1] = { co = coroutine.create(fn), due = now } end
 function Wait(ms) return coroutine.yield(ms) end
-function PlayerPedId() return 1 end
+function PlayerPedId() pedReads = pedReads + 1; return 1 end
 function GetVehiclePedIsIn() vehicleReads = vehicleReads + 1; return car.vehicle end
 function DoesEntityExist(entity) return entity ~= 0 end
-function IsEntityDead() return car.dead end
-function GetVehicleClass() return car.class end
+function IsEntityDead() deathReads = deathReads + 1; return car.dead end
+function GetVehicleClass() classReads = classReads + 1; return car.class end
 function GetPedInVehicleSeat() return car.driver end
 function IsPauseMenuActive() return car.paused end
 function GetGameTimer() return now + clockOffset end
 function GetSafeZoneSize() return safeZone end
 function GetIsVehicleEngineRunning() return car.engine end
-function GetVehicleLightsState() return true, car.lights, car.beams end
+function GetVehicleLightsState() lightReads = lightReads + 1; return true, car.lights, car.beams end
 function GetVehicleFuelLevel() fuelReads = fuelReads + 1; return car.fuel end
 function GetVehicleEngineHealth() return car.health end
 function GetEntitySpeed() speedReads = speedReads + 1; return car.speed end
-function GetVehicleCurrentGear() return car.gear end
-function GetEntitySpeedVector() return { y = car.velocityY } end
+function GetVehicleCurrentGear() gearReads = gearReads + 1; return car.gear end
+function GetEntitySpeedVector() vectorReads = vectorReads + 1; return { y = car.velocityY } end
 function GetVehicleCurrentRpm() return car.rpm end
-function DisableControlAction() disabled = disabled + 1 end
+function DisableControlAction(group, control, disable)
+    assert(group == 0 and control == 75 and disable == true, 'exit blocking must use the player control group')
+    disabled = disabled + 1
+end
 
 local function step(duration)
     local target = now + duration
@@ -106,6 +111,12 @@ check(payload.speed == 72 and payload.rpm == nil and payload.fuel == nil and pay
 car.speed = 10
 step(100)
 
+car.rpm = 0.521
+step(100)
+check(latest('telemetry').rpm == 52.1, 'RPM retains 0.1-percent detail without increasing the polling rate')
+car.rpm = 0.52
+step(100)
+
 commands.speedunit(nil, { 'mph' })
 step(100)
 check(latest('config').unit == 'mph' and latest('telemetry').speed == 22, 'MPH conversion and unit configuration agree')
@@ -167,10 +178,10 @@ check(latest('telemetry').beltAvailable == false and not api.SetSeatbelt(true), 
 car.driver = 2
 step(100)
 check(not latest('visibility').visible, 'passenger HUD is disabled by default')
-car.driver, car.class = 1, 15
+car.driver, car.class, car.vehicle = 1, 15, 40
 step(750)
 check(not latest('visibility').visible, 'aircraft are excluded')
-car.class = 0
+car.class, car.vehicle = 0, 50
 Config.ReadFuel = function() error('provider unavailable') end
 step(750)
 check(latest('visibility').visible and latest('telemetry').fuel == -1, 'fuel provider failure remains unknown without breaking HUD')
@@ -210,6 +221,8 @@ local function fresh(configure, vehicleState)
     now, clockOffset = 0, 0
     tasks, messages, callbacks, commands, api, events = {}, {}, {}, {}, {}, {}
     fuelReads, disabled, vehicleReads, speedReads = 0, 0, 0, 0
+    pedReads, deathReads, classReads, vectorReads, gearReads = 0, 0, 0, 0, 0
+    lightReads = 0
     car = { vehicle = 10, class = 0, driver = 1, dead = false, paused = false,
         speed = 10, velocityY = 10, rpm = 0.52, gear = 3, engine = true,
         health = 1000, lights = 0, beams = 0, fuel = 68 }
@@ -230,6 +243,43 @@ check(api.SetSeatbelt(true), 'belt indicator can operate with exit blocking disa
 step(500)
 check(api.IsSeatbeltOn() and disabled == 0 and #tasks == 1, 'indicator-only belt never starts a frame worker')
 
+fresh()
+api.SetSeatbelt(true)
+step(2)
+local oldPedReads, oldDeathReads, oldVehicleReads, oldDisabled = pedReads, deathReads, vehicleReads, disabled
+step(10) -- Between main polls: isolates ten frame-worker iterations.
+check(pedReads == oldPedReads and deathReads == oldDeathReads
+    and vehicleReads - oldVehicleReads == 10 and disabled - oldDisabled == 10,
+    'belt worker uses two natives per frame: one vehicle check and one exit block')
+car.dead = true
+step(100)
+check(not api.IsSeatbeltOn() and not latest('visibility').visible,
+    'main poll still clears the optimized belt worker on death')
+
+fresh(nil, { speed = 0, velocityY = 0, engine = false })
+step(1000)
+check(classReads == 1 and vectorReads == 0 and gearReads == 0,
+    'parked engine-off vehicle caches class and skips reverse-vector/gear reads')
+car.speed, car.velocityY, car.engine = 10, 10, true
+step(500)
+check(classReads == 1 and vectorReads > 0 and gearReads > 0,
+    'moving vehicle resumes gear/vector reads without repeated class queries')
+
+fresh(nil, { dead = true })
+car.dead = false
+step(750)
+check(latest('visibility').visible and classReads == 1,
+    'reviving in the same vehicle does not invalidate the class cache')
+
+for _, mode in ipairs({ 0, 1, 2 }) do
+    fresh(nil, { lights = mode > 0 and 1 or 0, beams = mode == 2 and 1 or 0 })
+    local oldMessages, oldLightReads, oldSpeedReads = count('telemetry'), lightReads, speedReads
+    step(2000)
+    check(lightReads - oldLightReads == 4 and speedReads - oldSpeedReads == 20
+        and count('telemetry') == oldMessages and #tasks == 1,
+        'steady light mode ' .. mode .. ' keeps 2-Hz light polling, zero repeated NUI updates, no extra worker')
+end
+
 fresh(function() Config.ShowPassenger = true end, { driver = 2 })
 check(latest('visibility').visible and latest('telemetry').speed == 36,
     'passenger option shows the HUD for a non-driver')
@@ -243,6 +293,9 @@ fresh(function()
 end, { fuel = 30 })
 check(latest('telemetry').fuel == 50 and latest('telemetry').speed == 22
     and latest('config').unit == 'mph', 'custom fuel capacity and initial MPH configuration agree')
+
+fresh(function() Config.MaxRpm = nil end)
+check(latest('config').maxRpm == 9000, 'older configs without MaxRpm receive a safe default dial scale')
 
 fresh(function() Config.UpdateInterval = 1 end)
 previousSpeedReads = speedReads

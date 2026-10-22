@@ -67,9 +67,11 @@ Fuel works automatically when your fuel script synchronizes FiveM's native vehic
 
 ## Updating from an older version
 
-Replace `fxmanifest.lua`, `client.lua`, and the **whole `web` folder** together, then run `restart zz-speedomter`. Keep your custom `config.lua`; the smaller 280 × 300 base layout also applies with an existing `Config.Scale = 1.0`. Set `Config.Scale = 0.85` if you want it smaller still. The old `Config.MaxRpm` setting is no longer used because the numeric RPM dial was removed.
+Replace `fxmanifest.lua`, `client.lua`, and the **whole `web` folder** together, then run `restart zz-speedomter`. Keep your custom `config.lua`; the detailed dial now renders at approximately 280 × 327 with `Config.Scale = 1.0`. Set `Config.Scale = 0.85` if you want it smaller still. Optional `Config.MaxRpm = 9000` controls the restored RPM numbers and readout; older configs without this field use 9000 automatically.
 
 Version 1.1.0 removes the dark color scheme responsible for the grey embedded-browser canvas. Do not mix old CSS or HTML with the updated files. If the previous screen persists after restarting, reconnect and confirm that only the updated copy of the resource is running.
+
+Version 1.2.0 restores the earlier dial style and adds smooth frame-based RPM interpolation. Update `client.lua` as well as the UI to receive the finer RPM readings. No polling interval change is needed.
 
 ## Troubleshooting
 

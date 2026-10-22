@@ -1,6 +1,7 @@
 local RESOURCE = GetCurrentResourceName()
 local visible, nuiReady, suppressed = false, false, false
 local currentVehicle, beltVehicle = 0, 0
+local observedVehicle, vehicleClass = 0, -1
 local belted, beltAvailable = false, false
 local beltThreadRunning = false
 local lastPayload, lastStatusAt = {}, 0
@@ -41,12 +42,12 @@ local function setBelt(value)
         beltThreadRunning = true
         CreateThread(function()
             while belted and beltVehicle ~= 0 do
-                local ped = PlayerPedId()
-                if GetVehiclePedIsIn(ped, false) ~= beltVehicle or IsEntityDead(ped) then
+                -- Reuse the ped validated when buckling. The main poll checks
+                -- death/eligibility; this frame check releases on vehicle exit.
+                if GetVehiclePedIsIn(ped, false) ~= beltVehicle then
                     resetBelt()
                 else
                     DisableControlAction(0, 75, true)
-                    DisableControlAction(27, 75, true)
                 end
                 Wait(0)
             end
@@ -66,6 +67,7 @@ local function sendConfig()
         bottom = math.max(0, tonumber(Config.Position.bottom) or 28),
         safeZone = (1 - safeZone) / 2,
         accent = Config.Accent,
+        maxRpm = tonumber(Config.MaxRpm) or 9000,
         fuelEnabled = Config.Fuel.enabled,
         lowFuel = Config.Fuel.low
     })
@@ -107,9 +109,15 @@ CreateThread(function()
     while true do
         local ped = PlayerPedId()
         local vehicle = GetVehiclePedIsIn(ped, false)
-        local eligible = vehicle ~= 0 and DoesEntityExist(vehicle) and not IsEntityDead(ped)
-        local class = eligible and GetVehicleClass(vehicle) or -1
-        eligible = eligible and Config.Classes[class] == true
+        local exists = vehicle ~= 0 and DoesEntityExist(vehicle)
+        -- Vehicle class is fixed for an entity; do not query it every sample.
+        if vehicle ~= observedVehicle then
+            observedVehicle = vehicle
+            vehicleClass = -1
+        end
+        if exists and vehicleClass == -1 then vehicleClass = GetVehicleClass(vehicle) end
+        local class = vehicleClass
+        local eligible = exists and not IsEntityDead(ped) and Config.Classes[class] == true
             and (Config.ShowPassenger or GetPedInVehicleSeat(vehicle, -1) == ped)
 
         local nextVehicle = eligible and vehicle or 0
@@ -152,11 +160,12 @@ CreateThread(function()
             end
 
             local speed = GetEntitySpeed(vehicle)
-            local gear = GetVehicleCurrentGear(vehicle)
-            local reversing = GetEntitySpeedVector(vehicle, true).y < -0.5
+            local gear = status.engine and GetVehicleCurrentGear(vehicle) or 0
+            local reversing = speed > 0.5 and GetEntitySpeedVector(vehicle, true).y < -0.5
             payload.speed = math.floor(speed * (unit == 'mph' and 2.2369362921 or 3.6) + 0.5)
-            payload.rpm = status.engine and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 100 + 0.5) or 0
+            payload.rpm = status.engine and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 1000 + 0.5) / 10 or 0
             payload.gear = reversing and 'R' or ((not status.engine or gear == 0) and 'N' or tostring(gear))
+            payload.engine = status.engine
             payload.engineWarning = status.engineWarning
             payload.lights = status.lights
             payload.fuel = status.fuel

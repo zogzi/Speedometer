@@ -95,12 +95,13 @@ class HudTests(unittest.TestCase):
         self.assertTrue(self.page.locator("#hud").is_hidden())
 
     def test_config_and_safe_zone_layout(self):
-        self.send(action="config", unit="mph", scale=1.2, right=40, bottom=35,
+        self.send(action="config", unit="mph", maxRpm=12000, scale=1.2, right=40, bottom=35,
                   safeZone=.05, accent="#aabbcc", lowFuel=30, fuelEnabled=False)
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", rpm=50, beltAvailable=False)
         self.assertEqual(self.page.locator("#unit").inner_text(), "MPH")
-        self.assertEqual(self.page.locator("#ticks, #rpm-value").count(), 0)
+        self.assertEqual(self.page.locator(".tick-label").count(), 10)
+        self.assertEqual(self.page.locator("#rpm-value").inner_text(), "6.0")
         self.assertTrue(self.page.locator("#fuel").is_hidden())
         self.assertTrue(self.page.locator("#belt").is_hidden())
         self.assertEqual(self.page.locator("html").evaluate("e => getComputedStyle(e).getPropertyValue('--accent')"), "#aabbcc")
@@ -112,7 +113,7 @@ class HudTests(unittest.TestCase):
         self.page.evaluate("window.originalArc = document.querySelector('#rpm-arc')")
         self.send(action="config", scale=1.2, safeZone=.1, accent="#abcdef")
         self.assertTrue(self.page.evaluate("window.originalArc === document.querySelector('#rpm-arc')"))
-        self.assertEqual(self.page.locator(".dial circle").count(), 4)
+        self.assertEqual(self.page.locator(".dial circle").count(), 5)
 
     def test_duplicate_updates_do_not_mutate_the_dom(self):
         self.send(action="visibility", visible=True)
@@ -141,7 +142,144 @@ class HudTests(unittest.TestCase):
         for selector in ["#rpm-arc", "#fuel-fill"]:
             self.assertEqual(self.page.locator(selector).evaluate("e => getComputedStyle(e).transitionDuration"), "0s")
 
+    def install_rpm_clock(self):
+        self.page.evaluate("""() => {
+            const clock = {now:performance.now(), id:0, pending:new Map()};
+            performance.now = () => clock.now;
+            window.requestAnimationFrame = callback => {
+                const id = ++clock.id;
+                clock.pending.set(id, callback);
+                return id;
+            };
+            window.cancelAnimationFrame = id => clock.pending.delete(id);
+            clock.tick = ms => {
+                clock.now += ms;
+                const callbacks = [...clock.pending.values()];
+                clock.pending.clear();
+                callbacks.forEach(callback => callback(clock.now));
+                return Number(document.querySelector('#rpm-arc').getAttribute('stroke-dasharray').split(' ')[0]);
+            };
+            window.rpmClock = clock;
+        }""")
+
+    def test_rpm_interpolates_retargets_and_stops_after_settling(self):
+        self.install_rpm_clock()
+        self.send(action="visibility", visible=True)
+        self.send(action="telemetry", rpm=100)
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "0 100")
+        middle = self.page.evaluate("rpmClock.tick(50)")
+        self.assertGreater(middle, 0)
+        self.assertLess(middle, 75)
+        self.send(action="telemetry", rpm=20)
+        self.assertEqual(float(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray").split()[0]), middle)
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 1)
+        after_retarget = self.page.evaluate("rpmClock.tick(16)")
+        self.assertLess(after_retarget, middle)
+        self.assertGreater(after_retarget, 15)
+        self.page.evaluate("() => {for(let i=0;i<60;i++) rpmClock.tick(16)}")
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "15 100")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
+    def test_rpm_response_matches_at_different_frame_rates(self):
+        self.install_rpm_clock()
+        results = []
+        for rate in [30, 60, 144]:
+            self.send(action="visibility", visible=False)
+            self.send(action="telemetry", rpm=0)
+            self.send(action="visibility", visible=True)
+            self.send(action="telemetry", rpm=90)
+            results.append(self.page.evaluate("""rate => {
+                let elapsed = 0;
+                let value;
+                while (elapsed < 200) {
+                    const step = Math.min(1000/rate, 200-elapsed);
+                    value = rpmClock.tick(step);
+                    elapsed += step;
+                }
+                return value;
+            }""", rate))
+        self.assertLess(max(results) - min(results), .002)
+
+    def test_hidden_hud_cancels_rpm_animation_and_reduced_motion_snaps(self):
+        self.install_rpm_clock()
+        self.send(action="visibility", visible=True)
+        self.send(action="telemetry", rpm=95)
+        self.page.evaluate("rpmClock.tick(16)")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 1)
+        self.send(action="visibility", visible=False)
+        before = self.page.locator("#rpm-arc").get_attribute("stroke-dasharray")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+        self.page.evaluate("rpmClock.tick(1000)")
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), before)
+        self.send(action="visibility", visible=True)
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "71.25 100")
+        self.page.emulate_media(reduced_motion="reduce")
+        self.send(action="telemetry", rpm=40)
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "30 100")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
+    def test_rpm_animates_through_real_browser_frames(self):
+        self.send(action="visibility", visible=True)
+        samples = self.page.evaluate("""() => new Promise(resolve => {
+            const values = [];
+            window.dispatchEvent(new MessageEvent('message', {data:{action:'telemetry',rpm:100}}));
+            const sample = () => {
+                values.push(Number(document.querySelector('#rpm-arc').getAttribute('stroke-dasharray').split(' ')[0]));
+                if(values.length < 16) requestAnimationFrame(sample);
+                else resolve(values);
+            };
+            requestAnimationFrame(sample);
+        })""")
+        self.assertGreater(len(set(samples)), 8)
+        self.assertEqual(samples, sorted(samples))
+        # The first callback can share the scheduling frame's timestamp.
+        self.assertTrue(all(0 <= value <= 75 for value in samples))
+        self.assertGreater(samples[-1], samples[0])
+
+    def test_background_document_stops_rpm_frames(self):
+        self.install_rpm_clock()
+        self.send(action="visibility", visible=True)
+        self.send(action="telemetry", rpm=90)
+        self.page.evaluate("rpmClock.tick(16)")
+        self.page.evaluate("""() => {
+            Object.defineProperty(document, 'hidden', {configurable:true, value:true});
+            document.dispatchEvent(new Event('visibilitychange'));
+        }""")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
+        before = self.page.locator("#rpm-arc").get_attribute("stroke-dasharray")
+        self.page.evaluate("rpmClock.tick(1000)")
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), before)
+        self.page.evaluate("""() => {
+            Object.defineProperty(document, 'hidden', {configurable:true, value:false});
+            document.dispatchEvent(new Event('visibilitychange'));
+        }""")
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "67.5 100")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
+
+    def test_lights_do_not_start_rpm_frames_or_repeat_dom_updates(self):
+        self.install_rpm_clock()
+        self.send(action="visibility", visible=True)
+        for lights in [0, 1, 2]:
+            with self.subTest(lights=lights):
+                self.send(action="telemetry", lights=lights)
+                self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+                records = self.page.evaluate("""lights => {
+                    const observer = new MutationObserver(() => {});
+                    observer.observe(document.querySelector('#hud'), {subtree:true, attributes:true, childList:true});
+                    for(let i=0;i<1000;i++) {
+                        window.dispatchEvent(new MessageEvent('message', {data:{action:'telemetry',lights}}));
+                    }
+                    const count = observer.takeRecords().length;
+                    observer.disconnect();
+                    return count;
+                }""", lights)
+                self.assertEqual(records, 0)
+                self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
     def test_unknown_fuel_and_malformed_input(self):
+        self.page.emulate_media(reduced_motion="reduce")
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", fuel=-1, gear="<img>", speed=-20, rpm=999)
         self.assertEqual(self.page.locator("#fuel-value").inner_text(), "—")
@@ -165,25 +303,27 @@ class HudTests(unittest.TestCase):
         finally:
             outside.close()
 
-    def test_contextual_indicators_hide_when_not_needed(self):
+    def test_original_status_row_reflects_vehicle_states(self):
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", engine=True, engineWarning=False, beltAvailable=True, belt=True, lights=0)
-        self.assertTrue(self.page.locator("#indicators").is_hidden())
+        self.assertTrue(self.page.locator("#indicators").is_visible())
+        self.assertIn("active", self.page.locator("#engine").get_attribute("class"))
+        self.assertIn("active", self.page.locator("#belt").get_attribute("class"))
+        self.assertEqual(self.page.locator("#lights").get_attribute("aria-label"), "Lights off")
         self.send(action="telemetry", belt=False)
-        self.assertTrue(self.page.locator("#belt").is_visible())
-        self.assertTrue(self.page.locator("#engine").is_hidden())
-        self.assertTrue(self.page.locator("#lights").is_hidden())
+        self.assertIn("warning", self.page.locator("#belt").get_attribute("class"))
         self.send(action="telemetry", beltAvailable=False, lights=2, engineWarning=True)
         self.assertTrue(self.page.locator("#belt").is_hidden())
-        self.assertTrue(self.page.locator("#engine").is_visible())
-        self.assertTrue(self.page.locator("#lights").is_visible())
+        self.assertIn("warning", self.page.locator("#engine").get_attribute("class"))
+        self.assertIn("high", self.page.locator("#lights").get_attribute("class"))
 
     def test_default_hud_is_compact(self):
         self.send(action="visibility", visible=True)
         box = self.page.locator("#hud").bounding_box()
         self.assertLess(box["width"], 300)
         self.assertLess(box["height"], 330)
-        self.assertEqual(self.page.locator(".wordmark, .overline, .rpm-caption, .tick-label").count(), 0)
+        self.assertEqual(self.page.locator(".wordmark, .rpm-caption").count(), 2)
+        self.assertEqual(self.page.locator(".tick-label").count(), 10)
 
     def test_embedded_canvas_does_not_paint_over_the_game(self):
         self.page.set_viewport_size({"width":1280, "height":720})
@@ -277,8 +417,8 @@ class HudTests(unittest.TestCase):
                 self.assertLess(speed["y"] + speed["height"], gear["y"])
                 icons = self.page.locator("#indicators").bounding_box()
                 fuel = self.page.locator("#fuel").bounding_box()
-                self.assertLess(gear["y"] + gear["height"], icons["y"])
-                self.assertLess(icons["y"] + icons["height"], fuel["y"])
+                self.assertLess(icons["y"] + icons["height"], speed["y"])
+                self.assertLess(gear["y"] + gear["height"], fuel["y"])
 
 
 
