@@ -4,11 +4,9 @@ local currentVehicle, beltVehicle = 0, 0
 local observedVehicle, vehicleClass = 0, -1
 local belted, beltAvailable = false, false
 local beltThreadRunning = false
-local rpmWorkerRunning = false
 local lastPayload, lastStatusAt = {}, 0
 local unit = Config.Unit == 'mph' and 'mph' or 'kmh'
 local interval = math.max(50, tonumber(Config.UpdateInterval) or 100)
-local rpmInterval = math.max(16, tonumber(Config.RpmInterval) or 16)
 local idleInterval = math.max(interval, tonumber(Config.IdleInterval) or 750)
 local statusInterval = math.max(interval, tonumber(Config.StatusInterval) or 500)
 local status = {}
@@ -18,32 +16,12 @@ local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
 end
 
-local function startRpmWorker()
-    if rpmWorkerRunning then return end
-    rpmWorkerRunning = true
-    CreateThread(function()
-        while visible and currentVehicle ~= 0 do
-            local vehicle = currentVehicle
-            if not DoesEntityExist(vehicle) then break end
-            local rpm = status.engine
-                and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 10000 + 0.5) / 100 or 0
-            if lastPayload.rpm ~= rpm then
-                lastPayload.rpm = rpm
-                SendNUIMessage({ action = 'telemetry', rpm = rpm })
-            end
-            Wait(rpmInterval)
-        end
-        rpmWorkerRunning = false
-    end)
-end
-
 local function setVisible(value)
     if visible ~= value then
         visible = value
         SendNUIMessage({ action = 'visibility', visible = value })
         if not value then lastPayload = {} end
     end
-    if value then startRpmWorker() end
 end
 
 local function resetBelt()
@@ -65,13 +43,9 @@ local function setBelt(value)
         beltThreadRunning = true
         CreateThread(function()
             while belted and beltVehicle ~= 0 do
-                -- Reuse the ped validated when buckling. The main poll checks
-                -- death/eligibility; this frame check releases on vehicle exit.
-                if GetVehiclePedIsIn(ped, false) ~= beltVehicle then
-                    resetBelt()
-                else
-                    DisableControlAction(0, 75, true)
-                end
+                -- Only the frame-scoped native belongs here. Vehicle, seat,
+                -- death and exit validation run in the shared vehicle poll.
+                DisableControlAction(0, 75, true)
                 Wait(0)
             end
             beltThreadRunning = false
@@ -173,6 +147,10 @@ CreateThread(function()
             local speed = GetEntitySpeed(vehicle)
             local gear = status.engine and GetVehicleCurrentGear(vehicle) or 0
             local reversing = speed > 0.5 and GetEntitySpeedVector(vehicle, true).y < -0.5
+            -- Half-percent detail avoids sending idle RPM jitter. Interpolation
+            -- stays in the browser; RPM shares one packet with speed and gear.
+            payload.rpm = status.engine
+                and math.floor(clamp(GetVehicleCurrentRpm(vehicle), 0, 1) * 200 + 0.5) / 2 or 0
             payload.speed = math.floor(speed * (unit == 'mph' and 2.2369362921 or 3.6) + 0.5)
             payload.gear = reversing and 'R' or ((not status.engine or gear == 0) and 'N' or tostring(gear))
             payload.engine = status.engine

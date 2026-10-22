@@ -8,8 +8,7 @@ Config.MaxRpm = 9000 -- visual dial scale; GTA provides normalized RPM, not real
 Config.ShowPassenger = false
 Config.HideWhenPaused = true
 
-Config.UpdateInterval = 100 -- milliseconds while driving (minimum 50)
-Config.RpmInterval = 16 -- RPM-only sampling; prioritizes smooth motion (minimum 16 ms)
+Config.UpdateInterval = 100 -- milliseconds for speed/gear/RPM; browser smooths between samples (minimum 50)
 Config.IdleInterval = 750 -- milliseconds outside supported vehicles
 Config.StatusInterval = 500 -- engine health and lights polling
 

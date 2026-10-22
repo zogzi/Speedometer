@@ -19,18 +19,19 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 body { user-select: none; }
 [hidden] { display: none !important; }
 .icon-library { position: absolute; width: 0; height: 0; overflow: hidden; }
-.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 320px; height: 345px; transform: scale(calc(var(--scale) * .875)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
-.status-row { position: absolute; inset: 0 34px auto; height: 28px; padding: 0 10px; display: flex; justify-content: space-between; align-items: center; background: #071012b8; border: 1px solid #b9d1ca12; border-radius: 6px; }
-.wordmark { font-size: 11px; font-weight: 800; font-style: italic; letter-spacing: 3px; text-shadow: 0 1px 5px #000; }
-.wordmark-dot { display: inline-block; width: 4px; height: 4px; margin-left: 5px; background: var(--accent); border-radius: 50%; vertical-align: middle; }
-.indicators { display: flex; align-items: center; gap: 17px; }
-.indicator { display: flex; color: #82918e; opacity: .65; }
+.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 340px; height: 320px; transform: scale(calc(var(--scale) * .875)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
+.indicators { position: absolute; inset: 0; }
+.indicator { position: absolute; display: flex; color: #82918e; opacity: .65; }
+/* Unboxed icons follow the outside of the left arc; positions stay fixed on bikes. */
+#engine { left: 25px; top: 42px; }
+#belt { left: -1px; top: 88px; }
+#lights { left: -10px; top: 140px; }
 .indicator svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .indicator.active { color: var(--accent); opacity: 1; }
 #engine.active { color: #62f5bb; }
 .indicator.warning { color: var(--warning); opacity: 1; }
 .indicator.high { color: #78baff; opacity: 1; }
-.instrument { position: absolute; top: 25px; left: 0; width: 320px; height: 320px; }
+.instrument { position: absolute; top: 0; left: 20px; width: 320px; height: 320px; }
 .dial { display: block; width: 100%; height: 100%; overflow: visible; }
 .arc-track { stroke: #203331; stroke-opacity: .85; stroke-width: 5; stroke-linecap: round; }
 .red-zone { stroke: var(--danger); stroke-opacity: .45; stroke-width: 5; }
@@ -41,12 +42,11 @@ body { user-select: none; }
 .tick.major { stroke-opacity: .65; stroke-width: 1.5; }
 .tick-label { fill: #c3d3ce; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
 .tick-label.red { fill: var(--danger); }
-.speed-block { position: absolute; top: 93px; width: 100%; text-align: center; text-shadow: 0 2px 12px #071012; }
-.overline { color: var(--muted); font-size: 9px; letter-spacing: 2px; font-weight: 600; }
+.speed-block { position: absolute; top: 108px; width: 100%; text-align: center; text-shadow: 0 2px 12px #071012; }
 .speed { margin: 1px 0 0; height: 82px; line-height: 82px; font-size: 79px; font-weight: 700; letter-spacing: -4px; padding-right: 4px; }
 .unit { display: block; font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #dce8e4; margin-top: 5px; padding-left: 3px; }
-.gear-block { position: absolute; top: 230px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; }
-.gear { font-size: 21px; font-weight: 600; line-height: 30px; min-width: 30px; text-align: center; color: var(--accent); border: 1px solid #57736766; border-radius: 6px; background: #07151288; }
+.gear-block { position: absolute; top: 230px; width: 100%; display: flex; align-items: center; justify-content: center; }
+.gear { font-size: 21px; font-weight: 600; line-height: 30px; min-width: 30px; text-align: center; color: var(--accent); }
 
 
 .indicator.damaged { color: var(--danger); opacity: 1; }

@@ -65,11 +65,13 @@ If you already use a speedometer, disable its speedometer component in that reso
 
 ## Updating from an older version
 
-Replace `fxmanifest.lua`, `client.lua`, and the **whole `web` folder** together, then run `restart zz-speedomter`. Keep your custom `config.lua`; the detailed dial now renders at approximately 280 × 302 with `Config.Scale = 1.0`. Set `Config.Scale = 0.85` if you want it smaller still. Optional `Config.MaxRpm = 9000` controls the RPM tick labels; older configs without this field use 9000 automatically.
+Replace `fxmanifest.lua`, `client.lua`, and the **whole `web` folder** together, then run `restart zz-speedomter`. Keep your custom `config.lua`; the detailed dial now renders at approximately 298 × 280 with `Config.Scale = 1.0`. Set `Config.Scale = 0.85` if you want it smaller still. Optional `Config.MaxRpm = 9000` controls the RPM tick labels; older configs without this field use 9000 automatically.
 
 Version 1.1.0 removes the dark color scheme responsible for the grey embedded-browser canvas. Do not mix old CSS or HTML with the updated files. If the previous screen persists after restarting, reconnect and confirm that only the updated copy of the resource is running.
 
-Version 1.3.0 removes fuel and the bottom RPM caption, turns engine damage red, and adds a dedicated 16-ms RPM sampler. Update `client.lua` as well as the UI. Older configs use the new RPM rate automatically. Add `Config.RpmInterval = 33` or `50` if you prefer lower RPM sampling cost; the other polling settings are independent. Old fuel config fields are safely ignored.
+Version 1.4.0 combines RPM, speed and gear updates into one loop, removing the expensive 16-ms RPM sampler from 1.3.0. Keep `Config.UpdateInterval = 100` for the recommended performance setting. Old `Config.RpmInterval` and fuel settings are ignored, so keeping your custom config cannot accidentally restore the fast worker. The browser still interpolates the RPM arc. SPEED/GEAR labels, ZZ branding and boxes are removed; icons follow the side of the dial.
+
+Seatbelt exit blocking uses one native per frame. Forced exits, vehicle changes and death clear belt state on the next vehicle poll, within 100 ms by default. To retain the belt indicator with no frame worker, set `Config.Seatbelt.blockExit = false`; normal vehicle exit will then be allowed while belted.
 
 ## Troubleshooting
 

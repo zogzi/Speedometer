@@ -15,16 +15,12 @@
   </svg>
 
   <main id="hud" class="hud" hidden aria-label="Vehicle instruments">
-    <div class="status-row">
-      <span class="wordmark">ZZ<span class="wordmark-dot"></span></span>
-      <div id="indicators" class="indicators">
-        <span id="engine" class="indicator" role="img" aria-label="Engine off" title="Engine"><svg><use href="#icon-engine"/></svg></span>
-        <span id="belt" class="indicator" role="img" aria-label="Seatbelt unfastened" title="Seatbelt"><svg><use href="#icon-belt"/></svg></span>
-        <span id="lights" class="indicator" role="img" aria-label="Lights off" title="Lights"><svg><use href="#icon-light"/></svg></span>
-      </div>
-    </div>
-
     <div class="instrument">
+      <div id="indicators" class="indicators">
+        <span id="engine" class="indicator" role="img" aria-label="Engine off"><svg><use href="#icon-engine"/></svg></span>
+        <span id="belt" class="indicator" role="img" aria-label="Seatbelt unfastened"><svg><use href="#icon-belt"/></svg></span>
+        <span id="lights" class="indicator" role="img" aria-label="Lights off"><svg><use href="#icon-light"/></svg></span>
+      </div>
       <svg class="dial" viewBox="0 0 320 320" aria-hidden="true">
         <defs><radialGradient id="dial-shade"><stop offset="0" stop-color="#071012" stop-opacity=".82"/><stop offset=".7" stop-color="#071012" stop-opacity=".58"/><stop offset="1" stop-color="#071012" stop-opacity="0"/></radialGradient></defs>
         <circle cx="160" cy="160" r="155" fill="url(#dial-shade)"/>
@@ -37,11 +33,10 @@
         <g id="ticks"></g>
       </svg>
       <div class="speed-block">
-        <span class="overline">SPEED</span>
         <div id="speed" class="speed">0</div>
         <span id="unit" class="unit">KM/H</span>
       </div>
-      <div class="gear-block"><span id="gear" class="gear">N</span><span class="overline">GEAR</span></div>
+      <div class="gear-block"><span id="gear" class="gear">N</span></div>
     </div>
 
   </main>

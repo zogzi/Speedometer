@@ -108,8 +108,8 @@ local reads = fuelReads
 local previousSpeedReads, previousRpmReads, previousLightReads = speedReads, rpmReads, lightReads
 step(10000)
 check(count('telemetry') == sent and fuelReads == 0 and speedReads - previousSpeedReads == 100
-    and rpmReads - previousRpmReads == 625 and lightReads - previousLightReads == 20,
-    'steady state: RPM 16 ms, speed 100 ms, lights 500 ms, zero fuel reads or repeated messages')
+    and rpmReads - previousRpmReads == 100 and lightReads - previousLightReads == 20,
+    'steady state: combined RPM/speed 100 ms, lights 500 ms, zero fuel reads or repeated messages')
 car.speed = 20
 step(100)
 payload = latest('telemetry')
@@ -119,8 +119,11 @@ car.speed = 10
 step(100)
 
 car.rpm = 0.5213
-step(16)
-check(ui.rpm == 52.13, 'dedicated RPM worker sends 0.01-percent readings before the next main poll')
+step(100)
+check(ui.rpm == 52, 'sub-half-percent RPM jitter does not generate extra readings')
+car.rpm = 0.527
+step(100)
+check(ui.rpm == 52.5, 'meaningful RPM changes retain half-percent detail')
 car.rpm = 0.52
 step(100)
 
@@ -237,13 +240,13 @@ local function fresh(configure, vehicleState)
 end
 
 fresh(function() Config.Seatbelt.enabled = false end)
-check(commands.zzbelt == nil and not api.SetSeatbelt(true) and #tasks == 2
+check(commands.zzbelt == nil and not api.SetSeatbelt(true) and #tasks == 1
     and ui.beltAvailable == false, 'disabled seatbelt registers no command or frame worker')
 
 fresh(function() Config.Seatbelt.blockExit = false end)
 check(api.SetSeatbelt(true), 'belt indicator can operate with exit blocking disabled')
 step(500)
-check(api.IsSeatbeltOn() and disabled == 0 and #tasks == 2, 'indicator-only belt never starts a frame worker')
+check(api.IsSeatbeltOn() and disabled == 0 and #tasks == 1, 'indicator-only belt never starts a frame worker')
 
 fresh()
 api.SetSeatbelt(true)
@@ -251,8 +254,8 @@ step(2)
 local oldPedReads, oldDeathReads, oldVehicleReads, oldDisabled = pedReads, deathReads, vehicleReads, disabled
 step(10) -- Between main polls: isolates ten frame-worker iterations.
 check(pedReads == oldPedReads and deathReads == oldDeathReads
-    and vehicleReads - oldVehicleReads == 10 and disabled - oldDisabled == 10,
-    'belt worker uses two natives per frame: one vehicle check and one exit block')
+    and vehicleReads == oldVehicleReads and disabled - oldDisabled == 10,
+    'belt worker uses only one native per frame, with no repeated vehicle checks')
 car.dead = true
 step(100)
 check(not api.IsSeatbeltOn() and not latest('visibility').visible,
@@ -278,7 +281,7 @@ for _, mode in ipairs({ 0, 1, 2 }) do
     local oldMessages, oldLightReads, oldSpeedReads = count('telemetry'), lightReads, speedReads
     step(2000)
     check(lightReads - oldLightReads == 4 and speedReads - oldSpeedReads == 20
-        and count('telemetry') == oldMessages and #tasks == 2,
+        and count('telemetry') == oldMessages and #tasks == 1,
         'steady light mode ' .. mode .. ' keeps 2-Hz light polling, zero repeated NUI updates, no extra worker')
 end
 
@@ -298,45 +301,46 @@ check(ui.fuel == nil and ui.speed == 22
 fresh(function() Config.MaxRpm = nil end)
 check(latest('config').maxRpm == 9000, 'older configs without MaxRpm receive a safe default dial scale')
 
-fresh(function() Config.RpmInterval = nil end)
+fresh(function() Config.RpmInterval = 16 end)
 local previousRpmReads = rpmReads
-step(160)
-check(rpmReads - previousRpmReads == 10, 'older configs use the new 16-ms RPM interval by default')
-
-fresh(function() Config.RpmInterval = 50 end)
-previousRpmReads = rpmReads
 step(1000)
-check(rpmReads - previousRpmReads == 20 and speedReads == 11,
-    'RPM sampling is independently configurable without changing speed polling')
+check(rpmReads - previousRpmReads == 10 and #tasks == 1,
+    'legacy 16-ms RPM setting cannot re-enable the expensive independent sampler')
 
 fresh()
-for i = 1, 60 do car.rpm = 0.2 + i / 100; step(16) end
-check(ui.rpm == 80 and rpmReads == 61 and speedReads == 10 and count('telemetry') == 62,
-    'moving RPM streams every 16 ms while other telemetry stays at 100 ms')
+local beforeMessages = count('telemetry')
+for i = 1, 100 do
+    car.rpm, car.speed = 0.2 + (i % 70) / 100, i
+    step(100)
+end
+check(rpmReads == 101 and speedReads == 101 and count('telemetry') - beforeMessages == 100,
+    'changing speed and RPM share at most one telemetry packet per 100-ms tick')
 car.paused = true
 step(100)
 previousRpmReads = rpmReads
 step(1000)
-check(rpmReads == previousRpmReads and coroutine.status(tasks[2].co) == 'dead',
-    'pause shuts down the fast RPM sampler rather than polling behind the hidden HUD')
+check(rpmReads == previousRpmReads and #tasks == 1,
+    'pause stops RPM sampling without an extra worker')
 
 fresh()
 for _ = 1, 100 do api.SetVisible(false); api.SetVisible(true) end
-step(32)
-check(#tasks == 2, 'rapid hide/show reuses one RPM worker instead of creating duplicates')
+step(100)
+check(#tasks == 1, 'rapid hide/show never creates a telemetry worker')
 api.SetVisible(false)
 previousRpmReads = rpmReads
 step(1000)
-check(rpmReads == previousRpmReads and coroutine.status(tasks[2].co) == 'dead',
-    'hidden HUD stops the dedicated RPM sampler')
+check(rpmReads == previousRpmReads and #tasks == 1,
+    'hidden HUD does not sample RPM')
 
 fresh()
 car.exists = false
-step(16)
-car.exists, car.rpm = true, 0.63
 step(100)
-check(ui.rpm == 63 and #tasks == 3,
-    'RPM worker safely recovers after its vehicle temporarily disappears')
+previousRpmReads = rpmReads
+check(not latest('visibility').visible, 'invalid vehicle hides without reading its RPM')
+car.exists, car.rpm = true, 0.63
+step(750)
+check(ui.rpm == 63 and rpmReads == previousRpmReads + 1 and #tasks == 1,
+    'shared sampler safely recovers after a vehicle temporarily disappears')
 
 fresh(function() Config.UpdateInterval = 1 end)
 previousSpeedReads = speedReads
@@ -349,15 +353,18 @@ for _ = 1, 200 do
     api.SetSeatbelt(false)
 end
 step(2)
-check(#tasks == 3 and coroutine.status(tasks[3].co) == 'dead' and disabled == 0,
+check(#tasks == 2 and coroutine.status(tasks[2].co) == 'dead' and disabled == 0,
     '200 rapid belt toggle pairs create only one worker, which exits without blocking')
 api.SetSeatbelt(true)
 step(2)
 car.vehicle = 20
 local controlsBeforeSwitch = disabled
-step(2)
-check(not api.IsSeatbeltOn() and disabled == controlsBeforeSwitch
-    and coroutine.status(tasks[4].co) == 'dead', 'belt worker exits immediately after a vehicle switch')
+step(100)
+check(not api.IsSeatbeltOn() and disabled - controlsBeforeSwitch <= 100
+    and coroutine.status(tasks[3].co) == 'dead', 'shared vehicle poll clears belt within one active interval after a forced switch')
+controlsBeforeSwitch = disabled
+step(100)
+check(disabled == controlsBeforeSwitch, 'no exit suppression remains after the switch is detected')
 
 fresh()
 car.health = 200
@@ -371,7 +378,7 @@ for i = 1, 1000 do
     car.speed = i % 50
     step(100)
 end
-check(count('telemetry') == 1002 and #tasks == 2,
+check(count('telemetry') == 1001 and #tasks == 1,
     '100-second changing-telemetry simulation produces one packet per tick and no extra workers')
 
 print(string.format('\n%d client checks passed (mocked FiveM natives, actual Lua 5.4).', checks))

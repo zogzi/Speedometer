@@ -308,7 +308,7 @@ class HudTests(unittest.TestCase):
         finally:
             outside.close()
 
-    def test_original_status_row_reflects_vehicle_states(self):
+    def test_unboxed_side_icons_reflect_vehicle_states(self):
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", engine=True, engineWarning=False, beltAvailable=True, belt=True, lights=0)
         self.assertTrue(self.page.locator("#indicators").is_visible())
@@ -327,7 +327,7 @@ class HudTests(unittest.TestCase):
         box = self.page.locator("#hud").bounding_box()
         self.assertLess(box["width"], 300)
         self.assertLess(box["height"], 330)
-        self.assertEqual(self.page.locator(".wordmark").count(), 1)
+        self.assertEqual(self.page.locator(".wordmark, .status-row, .overline").count(), 0)
         self.assertEqual(self.page.locator(".rpm-caption, .fuel, #rpm-value").count(), 0)
         self.assertEqual(self.page.locator(".tick-label").count(), 10)
 
@@ -421,8 +421,18 @@ class HudTests(unittest.TestCase):
                 speed = self.page.locator("#speed").bounding_box()
                 gear = self.page.locator(".gear-block").bounding_box()
                 self.assertLess(speed["y"] + speed["height"], gear["y"])
-                icons = self.page.locator("#indicators").bounding_box()
-                self.assertLess(icons["y"] + icons["height"], speed["y"])
+                dial = self.page.locator(".dial").bounding_box()
+                icon_boxes = [self.page.locator("#" + name).bounding_box() for name in ["engine", "belt", "lights"]]
+                self.assertLess(icon_boxes[0]["y"], icon_boxes[1]["y"])
+                self.assertLess(icon_boxes[1]["y"], icon_boxes[2]["y"])
+                self.assertGreater(icon_boxes[0]["x"], icon_boxes[1]["x"])
+                self.assertGreater(icon_boxes[1]["x"], icon_boxes[2]["x"])
+                for icon in icon_boxes:
+                    self.assertGreaterEqual(icon["x"], box["x"])
+                    self.assertLess(icon["x"] + icon["width"], dial["x"] + dial["width"] / 2)
+                for selector in ["#indicators", ".gear", "#engine", "#belt", "#lights"]:
+                    css = self.page.locator(selector).evaluate("e => {const s=getComputedStyle(e);return [s.backgroundColor,s.borderTopWidth]}")
+                    self.assertEqual(css, ["rgba(0, 0, 0, 0)", "0px"])
 
 
 
