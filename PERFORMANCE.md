@@ -1,6 +1,6 @@
-# zz-speedomter 1.4.1 performance review
+# zz-speedomter 1.5.0 performance review
 
-See [REVIEW.md](REVIEW.md) for the guide/source comparison, visual contrast fix and local Chromium measurements. Version 1.4.1 retains the 1.4.0 Lua work budget.
+See [REVIEW.md](REVIEW.md) for the guide/source comparison, visual contrast fix and local Chromium measurements. Version 1.5.0 retains the 1.4.x Lua work budget and telemetry protocol; only browser animation and sizing change. The server owner reports that performance is now good.
 
 ## Changes prompted by the reported 0.14-ms cost
 
@@ -11,11 +11,11 @@ The seatbelt frame loop now contains only the required `DisableControlAction` ca
 ## Verified locally
 
 - **65 Lua checks** execute the client script with real Lua 5.4 and mocked FiveM natives.
-- **22 Chromium tests** exercise the actual UI, including smooth interpolation, side-icon placement, absence of boxes/captions, engine damage colors and embedded canvas transparency.
+- **24 Chromium tests** exercise the actual UI, including smooth interpolation, side-icon placement, absence of boxes/captions, engine damage colors and embedded canvas transparency.
 - JavaScript syntax and Git whitespace checks.
 - Preview images use mocked telemetry, not GTA screenshots.
 
-| Work | Version 1.3.0 | Version 1.4.0 |
+| Work | Version 1.3.0 | Version 1.5.0 |
 | --- | --- | --- |
 | Default RPM reads over 10 simulated seconds | 625 | 100 (84% fewer) |
 | Separate RPM entity checks | One per RPM iteration | None |
@@ -29,11 +29,11 @@ The 10-second unchanged-state test observes 100 speed reads, 100 RPM reads, 20 l
 
 On foot, vehicle detection sleeps 750 ms. Hidden/paused/suppressed HUDs skip telemetry reads. Parked vehicles skip reverse-vector reads; engine-off vehicles skip RPM and gear reads. Vehicle class is cached. No belt worker runs while unbelted or when `Seatbelt.blockExit = false`. Old `RpmInterval = 16` configs cannot re-enable the removed worker.
 
-Browser motion uses one on-demand frame callback and exact critically damped interpolation. It preserves position and velocity across samples, behaves consistently at 30/60/144 Hz, and stops when settled, hidden or backgrounded. Reduced-motion mode snaps to readings. The dial range remains bounded to 0–100 percent; abrupt target changes can retain a little motion before reversing. Tick marks and unchanged labels are not rewritten every frame.
+Browser motion uses one on-demand frame callback and exact critically damped interpolation, now tuned with a 56-ms time scale for the 100-ms input cadence. Motion advances to the packet timestamp before the target changes, avoiding refresh-rate-dependent progress when messages arrive between frames. The spring adds roughly 110 ms of lag during a steady input ramp, in addition to sampling delay. It preserves position and velocity across samples, behaves consistently at 30/60/144 Hz, and stops when settled, hidden or backgrounded. Reduced-motion mode snaps to readings. The dial range remains bounded to 0–100 percent; abrupt target changes can retain a little motion before reversing. Tick marks and unchanged labels are not rewritten every frame.
 
 ## Visual checks
 
-Unboxed engine, belt and light icons follow the left side of the dial. SPEED/GEAR captions, ZZ branding, status panel, gear box, fuel and bottom RPM explanation are absent. The engine icon is green when healthy/running, red below full engine health (1000), and dim when healthy/off. Default footprint is about 298 × 280 pixels. Placement is checked from 720p to 4K and scales 0.65–1.5.
+The default dial, RPM arc and gear use silver-white, charcoal and grey. Unboxed engine, belt and light icons follow the left side of the dial; semantic green/red/amber/blue statuses remain. SPEED/GEAR captions, ZZ branding, status panel, gear box, fuel and bottom RPM explanation are absent. The engine icon is green when healthy/running, red below full engine health (1000), and dim when healthy/off. Default footprint is about 360 × 320 pixels. The dial is 320 pixels across (previously 280), and icons are 26 pixels (previously 17.5). Placement is checked from 720p to 4K and scales 0.65–1.5.
 
 The transparent root/body and normal color scheme remain. Pixel checks verify that the NUI does not paint a grey screen over the game. No browser demo is shipped.
 
@@ -43,9 +43,9 @@ The reported 0.14-ms resource time and comparison with qb-hud cannot be reproduc
 
 Verify shifts, reverse, engine start/stop, damage/repair, pause/resume, seat changes, forced vehicle switches and resource restart. To isolate belt cost, compare `Config.Seatbelt.blockExit = false` with the default. The frame-scoped exit native is documented in the [FiveM native reference](https://github.com/citizenfx/natives/blob/master/PAD/DisableControlAction.md).
 
-### Sustained headlight CPU increase
+### Historical headlight CPU report
 
-A sustained increase with headlights on was reported in-game. The local regression cases show equal light polling and no message/animation storm in all three steady light states, but this does **not** establish that the reported in-game issue is fixed. Native execution cost, changing real telemetry, and interactions with other resources cannot be reproduced by mocked natives.
+A sustained increase with headlights on was reported in-game on earlier versions; the user now reports good performance. The following procedure is retained in case the symptom returns. The local regression cases show equal light polling and no message/animation storm in all three steady light states, but this does **not** establish that the reported in-game issue is fixed. Native execution cost, changing real telemetry, and interactions with other resources cannot be reproduced by mocked natives.
 
 After updating, compare the same stationary vehicle with its engine running, belt off, and lights off/on, waiting 10 seconds between changes. Keep the frame cap and other resources unchanged. If `zz-speedomter` still stays substantially higher with lights on, capture each condition in the client F8 console:
 

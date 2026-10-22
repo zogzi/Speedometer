@@ -4,7 +4,7 @@ A standalone, Forza-inspired FiveM vehicle HUD. No ESX, QBCore, database, npm bu
 
 ![Compact zz-speedomter HUD, rendered with mocked FiveM messages](docs/preview.png)
 
-Version 1.4.1 prioritizes performance: RPM, speed and gear share one 100-ms telemetry loop and packet, with smooth browser interpolation between samples. Unboxed engine, belt and light icons follow the side of the dial. There is no branding, SPEED/GEAR caption, gear box or fuel display. The engine icon remains green when healthy/running and red when damaged. Static dark icon outlines improve contrast over bright scenery.
+Version 1.5.0 enlarges the dial by about 14% and the side icons by about 49% at the same configured scale. RPM smoothing is tuned for the existing 100-ms readings, so the arc keeps moving between packets. Lua polling and telemetry are unchanged. The default palette is silver-white, charcoal and grey, with semantic status colors. Icons and gear stay unboxed, with no branding, SPEED/GEAR captions or fuel display. Engine damage remains red, and static icon outlines preserve contrast over bright scenery.
 
 See [INSTALL.md](INSTALL.md) for the step-by-step server owner's guide and [PERFORMANCE.md](PERFORMANCE.md) for the local optimization and visual review, including what still needs in-game validation.
 
@@ -40,7 +40,7 @@ Edit `config.lua` and restart the resource to apply configuration changes:
 | `Unit` | `'kmh'` | Initial speed units |
 | `Scale` | `1.0` | HUD size, clamped to 0.65–1.5 |
 | `Position` | right 32, bottom 28 | Pixel offset, plus GTA safe-zone inset |
-| `Accent` | `'#62f5bb'` | Six-digit hex accent color |
+| `Accent` | `'#e7edf0'` | Six-digit hex accent color |
 | `MaxRpm` | `9000` | Estimated RPM tick scale; falls back to 9000 when omitted |
 | `ShowPassenger` | `false` | Also display for passengers |
 | `HideWhenPaused` | `true` | Hide when the pause menu is open |
@@ -76,7 +76,7 @@ local belted = exports['zz-speedomter']:IsSeatbeltOn()
 
 Speed, gear, RPM, engine-running state and vehicle eligibility share a 100-ms loop. Engine health and lights update every 500 ms. Each active tick sends at most one telemetry packet, containing only changed fields. RPM is rounded to half-percent increments to avoid tiny idle jitter. Hidden, paused or suppressed HUDs do not sample telemetry. There is no fuel integration or independent RPM worker; legacy `RpmInterval` and fuel settings are ignored.
 
-The browser retains smooth, time-based arc interpolation through one on-demand `requestAnimationFrame` callback. Critically damped motion preserves position and velocity as new samples arrive. Animation stops when settled or hidden. Reduced-motion mode snaps directly to readings. Tick marks are rebuilt only when `MaxRpm` changes.
+The browser retains smooth, time-based arc interpolation through one on-demand `requestAnimationFrame` callback. Critically damped motion uses a 56-ms time scale, tuned for the default 100-ms telemetry interval. It advances to each packet’s receipt time before retargeting, preserving position and velocity even when packets arrive between frames. The spring adds roughly 110 ms of smoothing delay during a steady ramp, in addition to sampling delay; this short display delay smooths out the old surge-and-slow pattern. Animation stops when settled or hidden. Reduced-motion mode snaps directly to readings. Tick marks are rebuilt only when `MaxRpm` changes.
 
 Compared with 1.3.0, default RPM reads fall from 625 to 100 in a deterministic 10-second simulation (84% fewer). Separate RPM packets and entity checks are removed. This measures work removed, not a percentage reduction in real CPU time. `Config.UpdateInterval = 100` is the recommended setting; lower values increase sampling and messaging cost.
 
@@ -90,7 +90,7 @@ No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server
 
 The NUI activates only when FiveM provides `GetParentResourceName`. Opening the HTML in a normal browser, including with `?preview`, stays blank. There are no full-screen presentation backgrounds, forms, or demo controls. Tests mock the FiveM interface externally; that harness is not part of the runtime resource.
 
-The default footprint is approximately 298 × 280 pixels, including the side icons. Only local dial shading paints a background; icons and gear have no boxes. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
+The default footprint is approximately 360 × 320 pixels, including the side icons. Only local dial shading paints a background; icons and gear have no boxes. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
 
 ### Automated checks
 

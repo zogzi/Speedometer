@@ -40,7 +40,7 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let rpmTarget = 0;
   let rpmDisplay = 0;
-  let rpmFrame = 0;
+  let rpmFrame = null;
   let rpmTime = 0;
   let rpmVelocity = 0;
 
@@ -49,25 +49,20 @@
   }
 
   function stopRpm() {
-    if (rpmFrame) cancelAnimationFrame(rpmFrame);
-    rpmFrame = 0;
+    if (rpmFrame !== null) cancelAnimationFrame(rpmFrame);
+    rpmFrame = null;
     rpmTime = 0;
     rpmVelocity = 0;
   }
 
-  function stepRpm(now) {
-    rpmFrame = 0;
-    if (hud.hidden || document.hidden) {
-      rpmDisplay = rpmTarget;
-      rpmTime = 0;
-      rpmVelocity = 0;
-      return;
-    }
-    // Exact critically damped motion: keep both position and velocity when
-    // a new reading arrives, with the same response at any refresh rate.
-    const elapsed = Math.max(0, now - rpmTime);
+  function advanceRpm(now) {
+    // A message can arrive after this frame's timestamp. Never move time back.
+    now = Math.max(now, rpmTime);
+    const elapsed = now - rpmTime;
     rpmTime = now;
-    const frequency = .05;
+    // Tuned for 100-ms telemetry: spread motion across samples instead of
+    // almost reaching each target and visibly slowing before the next packet.
+    const frequency = .018;
     const offset = rpmDisplay - rpmTarget;
     const coefficient = rpmVelocity + frequency * offset;
     const decay = Math.exp(-frequency * elapsed);
@@ -77,21 +72,39 @@
     if (position !== rpmDisplay) rpmVelocity = 0;
     const settled = Math.abs(rpmTarget - rpmDisplay) < .015 && Math.abs(rpmVelocity) < .002;
     if (settled) { rpmDisplay = rpmTarget; rpmVelocity = 0; }
+    return settled;
+  }
+
+  function stepRpm(now) {
+    rpmFrame = null;
+    if (hud.hidden || document.hidden) {
+      rpmDisplay = rpmTarget;
+      rpmTime = 0;
+      rpmVelocity = 0;
+      return;
+    }
+    const settled = advanceRpm(now);
     paintRpm();
     if (!settled) rpmFrame = requestAnimationFrame(stepRpm);
     else rpmTime = 0;
   }
 
   function setRpmTarget(value) {
+    const paused = hud.hidden || document.hidden || reducedMotion.matches;
+    if (!paused && value === rpmTarget) return;
+    const now = performance.now();
+    // Integrate up to receipt using the old target before switching. This
+    // preserves velocity even when packets land between animation frames.
+    if (!paused && rpmFrame !== null) advanceRpm(now);
     rpmTarget = value;
-    if (hud.hidden || document.hidden || reducedMotion.matches) {
+    if (paused) {
       stopRpm();
       rpmDisplay = rpmTarget;
       if (!hud.hidden && !document.hidden) paintRpm();
       return;
     }
-    if (!rpmFrame && Math.abs(rpmTarget - rpmDisplay) >= .015) {
-      rpmTime = performance.now();
+    if (rpmFrame === null && Math.abs(rpmTarget - rpmDisplay) >= .015) {
+      rpmTime = now;
       rpmFrame = requestAnimationFrame(stepRpm);
     }
   }
@@ -100,7 +113,7 @@
     if (hud.hidden || document.hidden) {
       stopRpm();
       rpmDisplay = rpmTarget;
-    } else if (!rpmFrame) {
+    } else if (rpmFrame === null) {
       rpmDisplay = rpmTarget;
       paintRpm();
     }

@@ -1,7 +1,7 @@
 :root {
-  --accent: #62f5bb;
-  --ink: #f6faf9;
-  --muted: #a4b3b1;
+  --accent: #e7edf0;
+  --ink: #f4f5f7;
+  --muted: #adb2ba;
   --warning: #ffbc66;
   --danger: #ff626b;
   --scale: 1;
@@ -19,34 +19,34 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 body { user-select: none; }
 [hidden] { display: none !important; }
 .icon-library { position: absolute; width: 0; height: 0; overflow: hidden; }
-.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 340px; height: 320px; transform: scale(calc(var(--scale) * .875)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
+.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 360px; height: 320px; transform: scale(var(--scale)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
 .indicators { position: absolute; inset: 0; }
-.indicator { position: absolute; display: flex; color: #82918e; opacity: .65; }
+.indicator { position: absolute; display: flex; color: #9298a0; opacity: .65; }
 /* Unboxed icons follow the outside of the left arc; positions stay fixed on bikes. */
-#engine { left: 25px; top: 42px; }
-#belt { left: -1px; top: 88px; }
-#lights { left: -10px; top: 140px; }
-.indicator svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#engine { left: 12px; top: 32px; }
+#belt { left: -15px; top: 81px; }
+#lights { left: -24px; top: 139px; }
+.indicator svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 /* Static outlines preserve contrast over bright scenery without filter layers. */
-.icon-outline { stroke: #071012; stroke-width: 3.8; opacity: .9; }
+.icon-outline { stroke: #101114; stroke-width: 3.8; opacity: .9; }
 .indicator.active { color: var(--accent); opacity: 1; }
 #engine.active { color: #62f5bb; }
 .indicator.warning { color: var(--warning); opacity: 1; }
 .indicator.high { color: #78baff; opacity: 1; }
-.instrument { position: absolute; top: 0; left: 20px; width: 320px; height: 320px; }
+.instrument { position: absolute; top: 0; left: 40px; width: 320px; height: 320px; }
 .dial { display: block; width: 100%; height: 100%; overflow: visible; }
-.arc-track { stroke: #203331; stroke-opacity: .85; stroke-width: 5; stroke-linecap: round; }
+.arc-track { stroke: #34383d; stroke-opacity: .85; stroke-width: 8; stroke-linecap: round; }
 .red-zone { stroke: var(--danger); stroke-opacity: .45; stroke-width: 5; }
 .rpm-arc { stroke: var(--accent); stroke-width: 5; stroke-linecap: round; transition: stroke 160ms; }
 .hud.redline .rpm-arc { stroke: var(--danger); }
-.inner-track { stroke: #b9d1ca; stroke-opacity: .12; stroke-width: 1; }
-.tick { stroke: #d7e6e1; stroke-opacity: .3; stroke-width: 1; }
+.inner-track { stroke: #cbd1d6; stroke-opacity: .12; stroke-width: 1; }
+.tick { stroke: #d9dde2; stroke-opacity: .3; stroke-width: 1; }
 .tick.major { stroke-opacity: .65; stroke-width: 1.5; }
-.tick-label { fill: #c3d3ce; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+.tick-label { fill: #c4c9ce; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
 .tick-label.red { fill: var(--danger); }
-.speed-block { position: absolute; top: 108px; width: 100%; text-align: center; text-shadow: 0 2px 12px #071012; }
+.speed-block { position: absolute; top: 108px; width: 100%; text-align: center; text-shadow: 0 2px 12px #101114; }
 .speed { margin: 1px 0 0; height: 82px; line-height: 82px; font-size: 79px; font-weight: 700; letter-spacing: -4px; padding-right: 4px; }
-.unit { display: block; font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #dce8e4; margin-top: 5px; padding-left: 3px; }
+.unit { display: block; font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #e0e3e8; margin-top: 5px; padding-left: 3px; }
 .gear-block { position: absolute; top: 230px; width: 100%; display: flex; align-items: center; justify-content: center; }
 .gear { font-size: 21px; font-weight: 600; line-height: 30px; min-width: 30px; text-align: center; color: var(--accent); }
 

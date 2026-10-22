@@ -160,7 +160,7 @@ class HudTests(unittest.TestCase):
         self.send(action="visibility", visible=True)
         self.send(action="telemetry", rpm=100)
         self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "0 100")
-        middle = self.page.evaluate("rpmClock.tick(50)")
+        middle = self.page.evaluate("rpmClock.tick(200)")
         self.assertGreater(middle, 0)
         self.assertLess(middle, 75)
         self.send(action="telemetry", rpm=20)
@@ -190,6 +190,61 @@ class HudTests(unittest.TestCase):
                     elapsed += step;
                 }
                 return value;
+            }""", rate))
+        self.assertLess(max(results) - min(results), .002)
+
+    def test_rpm_motion_stays_even_between_100ms_readings(self):
+        self.install_rpm_clock()
+        self.send(action="visibility", visible=True)
+        changes = self.page.evaluate("""() => {
+            const changes = [];
+            let previous = 0;
+            for (let packet = 1; packet <= 20; packet++) {
+                window.dispatchEvent(new MessageEvent('message', {
+                    data:{action:'telemetry', rpm:packet*3}
+                }));
+                for (let frame = 0; frame < 6; frame++) {
+                    const position = rpmClock.tick(100/6);
+                    if (packet > 5) changes.push(position-previous);
+                    previous = position;
+                }
+            }
+            return changes;
+        }""")
+        self.assertGreater(min(changes), 0)
+        # A steady source ramp should not visibly surge then stall each packet.
+        # The old 16-ms-tuned spring varied by over 7x at this source cadence.
+        self.assertLess(max(changes) / min(changes), 1.5)
+        self.page.evaluate("rpmClock.tick(1000)")
+        self.assertEqual(self.page.locator("#rpm-arc").get_attribute("stroke-dasharray"), "45 100")
+        self.assertEqual(self.page.evaluate("rpmClock.pending.size"), 0)
+
+    def test_between_frame_packets_match_across_refresh_rates(self):
+        self.install_rpm_clock()
+        results = []
+        for rate in [30, 60, 144]:
+            self.send(action="visibility", visible=False)
+            self.send(action="telemetry", rpm=0)
+            self.send(action="visibility", visible=True)
+            results.append(self.page.evaluate("""rate => {
+                const start = rpmClock.now;
+                const events = [
+                    {time:37, rpm:25}, {time:142, rpm:55},
+                    {time:239, rpm:80}, {time:343, rpm:40}
+                ];
+                for (let t = 1000/rate; t < 500; t += 1000/rate) events.push({time:t});
+                events.push({time:500});
+                events.sort((a,b) => a.time-b.time);
+                let position;
+                for (const event of events) {
+                    if ('rpm' in event) {
+                        rpmClock.now = start+event.time;
+                        window.dispatchEvent(new MessageEvent('message', {
+                            data:{action:'telemetry',rpm:event.rpm}
+                        }));
+                    } else position = rpmClock.tick(start+event.time-rpmClock.now);
+                }
+                return position;
             }""", rate))
         self.assertLess(max(results) - min(results), .002)
 
@@ -322,11 +377,15 @@ class HudTests(unittest.TestCase):
         self.assertIn("damaged", self.page.locator("#engine").get_attribute("class"))
         self.assertIn("high", self.page.locator("#lights").get_attribute("class"))
 
-    def test_default_hud_is_compact(self):
+    def test_default_hud_and_icons_have_readable_size(self):
         self.send(action="visibility", visible=True)
         box = self.page.locator("#hud").bounding_box()
-        self.assertLess(box["width"], 300)
-        self.assertLess(box["height"], 330)
+        self.assertAlmostEqual(box["width"], 360, delta=1)
+        self.assertAlmostEqual(box["height"], 320, delta=1)
+        for name in ["engine", "belt", "lights"]:
+            icon = self.page.locator("#" + name).bounding_box()
+            self.assertGreaterEqual(icon["width"], 26)
+            self.assertGreaterEqual(icon["height"], 26)
         self.assertEqual(self.page.locator(".wordmark, .status-row, .overline").count(), 0)
         self.assertEqual(self.page.locator(".rpm-caption, .fuel, #rpm-value").count(), 0)
         self.assertEqual(self.page.locator(".tick-label").count(), 10)
