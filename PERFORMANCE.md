@@ -1,10 +1,10 @@
-# zz-speedomter 1.7.0 motion and performance review
+# zz-speedomter 1.8.0 motion and performance review
 
-Version 1.7.0 deliberately prioritizes fluid speed/RPM motion over the lower active CPU budget of 1.6.0. The default is now `Config.UpdateInterval = 0`, meaning one telemetry sample per game frame through `Wait(0)`. The HUD is 15% smaller through `Config.Scale = 0.85`.
+Version 1.8.0 retains the 1.7.0 sampling and smoothing, and moves conditional icons beneath the dial. It deliberately prioritizes fluid speed/RPM motion over the lower active CPU budget of 1.6.0. The default is now `Config.UpdateInterval = 0`, meaning one telemetry sample per game frame through `Wait(0)`. The HUD is 15% smaller through `Config.Scale = 0.85`.
 
 ## What changed
 
-| Behavior | 1.6.0 | 1.7.0 default |
+| Behavior | 1.6.0 | 1.8.0 default |
 | --- | --- | --- |
 | Active sampling | Every 100 ms | Every game frame |
 | Speed sent to NUI | Rounded integer | Full fractional reading |
@@ -12,8 +12,8 @@ Version 1.7.0 deliberately prioritizes fluid speed/RPM motion over the lower act
 | Speed display | Jumps to each received number | Animates between readings, then rounds for display |
 | RPM arc | Time-based spring | Same continuous spring, finer inputs and stroke precision |
 | Browser animation | One RPM callback | One shared speed/RPM callback |
-| Default footprint | 360 × 320 pixels | 306 × 272 pixels |
-| Side icon size | 26 pixels | About 22 pixels |
+| Default footprint | 360 × 320 pixels | 272 × 299 pixels |
+| Icon size | 26 pixels | About 22 pixels |
 
 Both gauges preserve position and velocity across incoming readings. The exact critically damped spring advances to each packet's receipt time before switching targets, avoiding repeated easing restarts. Its time scale is about 56 ms, adding roughly 110 ms of display delay during a steady ramp. Higher sampling reduces the separate delay before a new vehicle reading arrives. Abrupt changes can retain a little motion before reversing, but values stay bounded to 0–999 speed and 0–100% RPM. Gear changes remain immediate; fractional speed is rounded only when painted. Switching units converts the current speed and velocity instead of animating a false speed change.
 
@@ -32,7 +32,7 @@ Set `Config.UpdateInterval = 100` to restore the older sampling cadence while re
 ## Validation
 
 - **81 Lua checks** execute the real client with Lua 5.4 and mocked FiveM natives. Existing lifecycle/work-budget tests cover the optional 100-ms mode. Additional tests verify shipping defaults, one sample per simulated frame, combined packets, fractional values, pause backoff, and vehicle/belt changes. The scheduler models `Wait(0)` as a 16-ms frame; it is not a GTA benchmark.
-- **29 Chromium tests** cover speed counting/braking, fractional frame-rate inputs, shared animation scheduling, unit conversion, 30/60/144-Hz retargeting, settling/visibility/reduced motion, warnings, layouts and transparent embedded canvases. A steady 60-Hz RPM ramp must keep fastest/slowest frame motion within 1.05× after warmup; the optional 100-ms ramp retains its 1.5× limit.
+- **29 Chromium tests** cover speed counting/braking, fractional frame-rate inputs, shared animation scheduling, unit conversion, 30/60/144-Hz retargeting, settling/visibility/reduced motion, all combinations of warning visibility, centered bottom icons, layouts and transparent embedded canvases. A steady 60-Hz RPM ramp must keep fastest/slowest frame motion within 1.05× after warmup; the optional 100-ms ramp retains its 1.5× limit.
 - JavaScript syntax and Git whitespace checks.
 - Preview images and the motion recording use mocked telemetry, not GTA footage.
 
@@ -40,7 +40,7 @@ Set `Config.UpdateInterval = 100` to restore the older sampling cadence while re
 
 ## Visual and in-game checks
 
-The default dial is 272 pixels across with unboxed icons following its left curve. Neutral silver-white/charcoal colors remain; engine damage is red, healthy/running green, belt warning amber and high beams blue. There is no fuel bar, branding, bottom RPM explanation or SPEED/GEAR caption. Transparent root/body and normal color scheme preserve the grey-screen fix. Layout tests cover 720p–4K and scales 0.65–1.5. Bright/dark previews use synthetic backgrounds.
+The default dial is 272 pixels across with an unboxed icon row below it. The complete footprint is about 272 × 299 pixels. Healthy engines, fastened/unavailable belts and lights-off states hide their icons entirely. Visible icons center together without gaps, while the dial stays fixed. Neutral silver-white/charcoal colors remain; engine damage is red, an unfastened belt is amber, and high beams are blue. There is no fuel bar, branding, bottom RPM explanation or SPEED/GEAR caption. Transparent root/body and normal color scheme preserve the grey-screen fix. Layout tests cover 720p–4K and scales 0.65–1.5. Bright/dark previews use synthetic backgrounds.
 
 Actual GTA/FiveM is unavailable in this environment. Install the complete update and compare acceleration, gear shifts, braking to zero, reverse, unit changes, pause/resume, vehicle switching, engine damage/repair, belt and lights in game. The higher active resource cost is intentional; no fixed millisecond or FPS claim is made.
 

@@ -19,21 +19,17 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 body { user-select: none; }
 [hidden] { display: none !important; }
 .icon-library { position: absolute; width: 0; height: 0; overflow: hidden; }
-.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 360px; height: 320px; transform: scale(var(--scale)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
-.indicators { position: absolute; inset: 0; }
-.indicator { position: absolute; display: flex; color: #9298a0; opacity: .65; }
-/* Icon centers share a 174px radius, spaced 20 degrees apart. */
-#engine { left: 13.71px; top: 35.15px; }
-#belt { left: -16.51px; top: 87.49px; }
-#lights { left: -27px; top: 147px; }
+.hud { position: fixed; right: calc(var(--right) + var(--safe-x)); bottom: calc(var(--bottom) + var(--safe-y)); width: 320px; height: 352px; transform: scale(var(--scale)); transform-origin: bottom right; pointer-events: none; font-variant-numeric: tabular-nums; }
+/* Reserve the bottom row so showing a warning never moves the dial. Hidden
+   icons leave no gaps; the remaining indicators stay centered together. */
+.indicators { position: absolute; bottom: 0; left: 0; width: 100%; height: 26px; display: flex; align-items: center; justify-content: center; gap: 16px; }
+.indicator { display: flex; flex: none; color: var(--accent); }
 .indicator svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 /* Static outlines preserve contrast over bright scenery without filter layers. */
 .icon-outline { stroke: #101114; stroke-width: 3.8; opacity: .9; }
-.indicator.active { color: var(--accent); opacity: 1; }
-#engine.active { color: #62f5bb; }
-.indicator.warning { color: var(--warning); opacity: 1; }
-.indicator.high { color: #78baff; opacity: 1; }
-.instrument { position: absolute; top: 0; left: 40px; width: 320px; height: 320px; }
+.indicator.warning { color: var(--warning); }
+.indicator.high { color: #78baff; }
+.instrument { position: absolute; top: 0; left: 0; width: 320px; height: 320px; }
 .dial { display: block; width: 100%; height: 100%; overflow: visible; }
 .arc-track { stroke: #34383d; stroke-opacity: .85; stroke-width: 8; stroke-linecap: round; }
 .red-zone { stroke: var(--danger); stroke-opacity: .45; stroke-width: 5; }
@@ -49,5 +45,5 @@ body { user-select: none; }
 .unit { display: block; font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #e0e3e8; margin-top: 5px; padding-left: 3px; }
 .gear-block { position: absolute; top: 230px; width: 100%; display: flex; align-items: center; justify-content: center; }
 .gear { font-size: 21px; font-weight: 600; line-height: 30px; min-width: 30px; text-align: center; color: var(--accent); }
-.indicator.damaged { color: var(--danger); opacity: 1; }
+.indicator.damaged { color: var(--danger); }
 @media (prefers-reduced-motion: reduce) { .rpm-arc { transition: none; } }

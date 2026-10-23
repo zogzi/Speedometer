@@ -76,7 +76,9 @@ Config.Accent = '#e7edf0'
 
 Then run `restart zz-speedomter`. Keeping an old `Scale = 1.0` or `UpdateInterval = 100` preserves the old size or sampling interval; these explicit custom values are not overwritten automatically.
 
-Version 1.7.0 reduces the default footprint from 360 × 320 to 306 × 272 pixels. The dial is 272 pixels across, and side icons are about 22 pixels. Both the speed digits and RPM arc interpolate continuously. Speed and RPM now retain fractional readings and sample every game frame, prioritizing smoothness over the previous CPU budget. Whole-number speed is rounded only when drawn. Unit changes convert immediately without a false acceleration/braking transition; gear changes remain immediate.
+Version 1.7.0 reduces the default footprint from 360 × 320 to 306 × 272 pixels. The dial is 272 pixels across, and icons are about 22 pixels. Both the speed digits and RPM arc interpolate continuously. Speed and RPM now retain fractional readings and sample every game frame, prioritizing smoothness over the previous CPU budget. Whole-number speed is rounded only when drawn. Unit changes convert immediately without a false acceleration/braking transition; gear changes remain immediate.
+
+Version 1.8.0 places the indicators in a row beneath the dial and removes the old side gutter. The complete footprint is now approximately 272 × 299 pixels at Scale 0.85. The engine icon appears only for damage, the belt icon only while unfastened and available, and the light icon only with headlights/high beams on. The remaining icons center together, with no empty gaps. The dial keeps its position when the row is empty. From 1.7.0, replace `fxmanifest.lua` and the complete `web` folder, then restart; Lua behavior, smoothing and config values are unchanged.
 
 You can still select `Config.UpdateInterval = 100` for the earlier lower-cost sampling cadence, with the new smoothing retained. No independent RPM worker is used. Legacy fuel and `RpmInterval` settings remain ignored. Optional `MaxRpm` defaults to 9000, and older custom accent colors remain valid.
 

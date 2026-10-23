@@ -9,7 +9,7 @@
   if (!hasNui) return;
   const state = {
     speed: 0, rpm: 0, gear: 'N', engine: false, engineWarning: false,
-    lights: 0, belt: false, beltAvailable: true,
+    lights: 0, belt: false, beltAvailable: false,
   };
   const config = { unit: 'kmh', maxRpm: 9000 };
   const telemetryKeys = Object.keys(state);
@@ -172,18 +172,14 @@
       hud.classList.toggle('redline', state.rpm >= 85);
     }
     if ('gear' in delta) text(refs.gear, /^[NR0-9]$|^1[0-9]$/.test(String(delta.gear)) ? String(delta.gear) : 'N');
-    if ('engine' in delta || 'engineWarning' in delta) {
-      refs.engine.classList.toggle('active', state.engine && !state.engineWarning);
-      refs.engine.classList.toggle('damaged', state.engineWarning);
-      attribute(refs.engine, 'aria-label', state.engineWarning ? 'Engine damaged' : state.engine ? 'Engine running' : 'Engine off');
+    if ('engineWarning' in delta) {
+      hidden(refs.engine, state.engineWarning !== true);
     }
     if ('belt' in delta || 'beltAvailable' in delta) {
-      hidden(refs.belt, !state.beltAvailable);
-      refs.belt.classList.toggle('active', state.belt);
-      refs.belt.classList.toggle('warning', !state.belt);
-      attribute(refs.belt, 'aria-label', state.belt ? 'Seatbelt fastened' : 'Seatbelt unfastened');
+      hidden(refs.belt, !state.beltAvailable || state.belt);
     }
     if ('lights' in delta) {
+      hidden(refs.lights, state.lights !== 1 && state.lights !== 2);
       refs.lights.classList.toggle('active', state.lights === 1);
       refs.lights.classList.toggle('high', state.lights === 2);
       attribute(refs.lights, 'aria-label',

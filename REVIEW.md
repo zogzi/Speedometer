@@ -1,6 +1,6 @@
 # Source and visual review
 
-Reviewed 2026-10-22 against the sources below. Runtime version: 1.7.0. This release intentionally raises the default sampling rate to every game frame and smooths speed as well as RPM, prioritizing fluidity at the user’s request. The external revisions below are unchanged from the source review.
+Reviewed 2026-10-22 against the sources below. Runtime version: 1.8.0. This release retains the frame-based sampling and smooth speed/RPM from 1.7.0, and moves conditional status icons beneath the dial. The external revisions below are unchanged from the source review.
 
 The resource uses the relevant FiveM and browser techniques; its active work budget is now deliberately higher than 1.6.0. That does not establish a universal “fully optimized” state or prove a lower in-game cost than another HUD. Real FiveM profiling is still required to locate any remaining expensive native calls or CEF rendering work.
 
@@ -23,7 +23,7 @@ Compared the actual client source at these revisions, not advertised resmon scre
 - [qb-hud client](https://github.com/qbcore-framework/qb-hud/blob/65d102aeb0de7e2ab08319bc619e85d4c4f55334/client.lua), [default config](https://github.com/qbcore-framework/qb-hud/blob/65d102aeb0de7e2ab08319bc619e85d4c4f55334/config.lua).
 - [ps-hud client](https://github.com/Project-Sloth/ps-hud/blob/e28fbfd87135c94bcc95b54f3526c65b21208a1a/client.lua). This shares ancestry with qb-hud, so it is not an independent performance benchmark.
 
-| Behavior | zz-speedomter 1.7.0 | Reviewed qb-hud | Reviewed ps-hud |
+| Behavior | zz-speedomter 1.8.0 | Reviewed qb-hud | Reviewed ps-hud |
 | --- | --- | --- | --- |
 | Vehicle telemetry cadence | Every game frame by default; 100 ms optional | 500 ms with default `isChangeFPSChecked = true`; 50 ms with it disabled | 500 ms in logged-in HUD loop |
 | Unchanged data | No telemetry packet | Vehicle packet skipped | Vehicle packet skipped |
@@ -44,11 +44,11 @@ The earlier client separately read scalar speed and local velocity on each movin
 
 ## Visual review
 
-Checked the real page against bright and dark backgrounds, compact/default/enlarged scales, 720p through 4K, warning states, and an embedded transparent iframe. Speed and units remain central; gear and curved side icons are unboxed. No ZZ branding, SPEED/GEAR descriptions, fuel bar or bottom RPM caption is present.
+Checked the real page against bright and dark backgrounds, compact/default/enlarged scales, 720p through 4K, warning states, and an embedded transparent iframe. Speed and units remain central; gear and the bottom indicator row are unboxed. The engine icon appears only when damaged, belt only while unfastened and available, and lights only while on. Every warning combination is checked for centered icons and a fixed dial position. No ZZ branding, SPEED/GEAR descriptions, fuel bar or bottom RPM caption is present.
 
-Version 1.5.0 increases the dial from 280 to 320 displayed pixels and icons from 17.5 to 26 pixels at Scale 1.0. That 1.5/1.6 footprint is 360 × 320 pixels. Version 1.7.0 uses Scale 0.85 by default, reducing it to 306 × 272 pixels with approximately 22-pixel side icons. Version 1.6.0 places the icon centers on a common radius with equal angular spacing, contains the shading within the track, and uses a compact text shadow. A neutral silver-white/charcoal palette replaces the green dial accent; engine damage, belt warnings and high beams retain semantic colors.
+Version 1.5.0 increases the dial from 280 to 320 displayed pixels and icons from 17.5 to 26 pixels at Scale 1.0. That 1.5/1.6 footprint is 360 × 320 pixels. Version 1.7.0 uses Scale 0.85 by default, reducing it to 306 × 272 pixels with approximately 22-pixel side icons. Version 1.6.0 places the icon centers on a common radius with equal angular spacing, contains the shading within the track, and uses a compact text shadow. A neutral silver-white/charcoal palette replaces the green dial accent; engine damage, belt warnings and high beams retain semantic colors. Version 1.8.0 moves the icons beneath the dial, retaining their size and the 272-pixel dial. Removing the side gutter and reserving a bottom row gives a 272 × 299 footprint. Only applicable icons appear, with no gaps or dial movement.
 
-One concrete issue was found: thin green icons had weak contrast over bright backgrounds. Version 1.4.1 adds a static dark SVG outline behind each icon. It adds no animation loop, background panel, blur or filter. Engine green/red and high-beam blue remain intact. [Bright preview](docs/preview-bright.png) and [dark preview](docs/preview-dark.png) use synthetic backgrounds, not GTA screenshots. Day/night readability still needs an in-game look.
+One concrete issue was found: thin green icons had weak contrast over bright backgrounds. Version 1.4.1 adds a static dark SVG outline behind each icon. It adds no animation loop, background panel, blur or filter. That outline remains on the current red engine warning, amber belt warning and neutral/blue light indicators. [Bright preview](docs/preview-bright.png) and [dark preview](docs/preview-dark.png) use synthetic backgrounds, not GTA screenshots. Day/night readability still needs an in-game look.
 
 ## Browser measurement
 

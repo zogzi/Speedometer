@@ -1,7 +1,7 @@
 Config = {}
 
 Config.Unit = 'kmh' -- 'kmh' or 'mph'; /speedunit switches locally for this session
-Config.Scale = 0.85 -- 0.65–1.5; default footprint: 306 × 272 pixels
+Config.Scale = 0.85 -- 0.65–1.5; default footprint: 272 × 299 pixels including the bottom icons
 Config.Position = { right = 32, bottom = 28 } -- pixels, before game safe-zone inset
 Config.Accent = '#e7edf0'
 Config.MaxRpm = 9000 -- visual dial scale; GTA provides normalized RPM, not real RPM

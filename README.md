@@ -4,9 +4,9 @@ A standalone, Forza-inspired FiveM vehicle HUD. No ESX, QBCore, database, npm bu
 
 ![Compact zz-speedomter HUD, rendered with mocked FiveM messages](docs/preview.png)
 
-[60-fps motion preview with simulated telemetry](docs/motion.mp4)
+[60-fps motion preview with simulated telemetry](docs/motion.mp4) · [warning icons preview](docs/preview-warnings.png)
 
-Version 1.7.0 makes the HUD 15% smaller and prioritizes fluid motion: speed digits now count smoothly between readings, and both speed and RPM retain fractional precision with telemetry every game frame. One shared browser animation preserves motion across readings. The default footprint is 306 × 272 pixels, with the same neutral colors and unboxed side icons. This deliberately uses more active CPU/NUI work than 1.6.0's 100-ms sampling.
+Version 1.8.0 moves the icons into a centered, unboxed row below the speedometer. The seatbelt warning appears only while unfastened, the red check-engine icon only while damaged, and the headlights icon only while lights are on (blue for high beams). Hidden icons leave no gaps, and the dial stays fixed as indicators change. The compact 272-pixel dial, smooth speed counting and continuous RPM animation from 1.7.0 retain their settings; the complete footprint is approximately 272 × 299 pixels.
 
 See [INSTALL.md](INSTALL.md) for the step-by-step server owner's guide and [PERFORMANCE.md](PERFORMANCE.md) for the local optimization and visual review, including what still needs in-game validation.
 
@@ -30,8 +30,8 @@ The folder may have another name; use that name in `ensure` and in integration e
 ## Included
 
 - Digital speed, KM/H or MPH, gear, reverse detection, and normalized RPM arc with a redline state.
-- Green/red engine status, headlights and high-beam indicators. No fuel meter or bottom RPM caption.
-- Optional seatbelt toggle with exit blocking. The side icons show engine, belt, and light states; bikes have no belt indicator.
+- Conditional red check-engine, amber unfastened-seatbelt and headlight/high-beam indicators below the dial. No fuel meter or bottom RPM caption.
+- Optional seatbelt toggle with exit blocking. The belt icon disappears when fastened; bikes and servers with the belt feature disabled have no belt warning.
 - Driver-only display by default; hides on foot, on death, in unsupported vehicle classes, and in the pause menu.
 - Safe-zone-aware placement, configurable size and accent color, transparent NUI, and no input focus capture.
 
@@ -83,6 +83,7 @@ One `requestAnimationFrame` callback animates both speed and RPM using exact cri
 Sampling every game frame intentionally increases native calls and NUI traffic compared with 1.6.0. Set `Config.UpdateInterval = 100` to restore the old sampling cadence while retaining the new browser smoothing. It is an optional tradeoff, not the default for this fluidity-focused release. Velocity reuse, cached vehicle class, slower status polling and unchanged-field suppression still apply. There is no fuel integration or separate RPM worker; legacy `RpmInterval` and fuel settings are ignored.
 
 The optional belt worker calls only `DisableControlAction` per frame. Vehicle/seat/death validation shares the main poll. A forced exit or switch clears belt state at the next vehicle check, and the worker exits on its next frame. For an indicator without exit blocking, set `Config.Seatbelt.blockExit = false`. See [PERFORMANCE.md](PERFORMANCE.md) for validation and in-game profiling.
+
 The NUI startup handshake has a two-second request timeout and up to four retries, with increasing delays. Those timers stop after success; they are separate from vehicle updates.
 
 No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server, hardware, frame rate, and other resources. Use `resmon 1` in FiveM to check this resource on foot, driving, and belted. Lower `UpdateInterval` values increase native calls and NUI traffic.
@@ -91,7 +92,7 @@ No `0.00 ms` or fixed FPS claim is made. Actual CPU usage depends on your server
 
 The NUI activates only when FiveM provides `GetParentResourceName`. Opening the HTML in a normal browser, including with `?preview`, stays blank. There are no full-screen presentation backgrounds, forms, or demo controls. Tests mock the FiveM interface externally; that harness is not part of the runtime resource.
 
-The default footprint is approximately 306 × 272 pixels, including the side icons. Only local dial shading paints a background; icons and gear have no boxes. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
+The default footprint is approximately 272 × 299 pixels, including the bottom icon row. Icons are about 22 pixels across; the row keeps its space when empty so the dial never jumps. Only local dial shading paints a background; icons and gear have no boxes. The page uses a normal color scheme and transparent root/body so embedded Chromium does not substitute an opaque dark canvas.
 
 ### Automated checks
 
@@ -117,7 +118,7 @@ Lua tests exercise the actual client code with a deterministic scheduler and moc
 2. Enter a car, accelerate, brake, reverse, and switch units. Verify speed, gear, and RPM changes.
 3. Toggle headlights/high beams, toggle the belt and try exiting. Unbelt and exit; verify the HUD hides.
 4. Check pause/resume, driver/passenger behavior, a motorcycle, vehicle switching, and a resource restart while already driving.
-5. Damage and repair the engine; verify the icon changes green/red correctly. Inspect `resmon 1` in each operating state.
+5. Damage and repair the engine; verify its red icon appears and then hides. Fasten/unfasten the belt and toggle the lights; verify only relevant icons appear beneath the dial. Inspect `resmon 1` in each operating state.
 
 ## Layout
 

@@ -449,18 +449,22 @@ class HudTests(unittest.TestCase):
         self.send(action="config", fuelEnabled=True, lowFuel=20)
         self.assertEqual(self.page.locator("#fuel, #icon-fuel, #rpm-value, .rpm-caption").count(), 0)
 
-    def test_engine_icon_turns_red_when_damaged_and_green_when_repaired(self):
+    def test_engine_warning_only_appears_while_damaged(self):
         self.send(action="visibility", visible=True)
         self.send(action="config", accent="#5566ff")
         self.send(action="telemetry", engine=True, engineWarning=False)
-        color = lambda: self.page.locator("#engine").evaluate("e => getComputedStyle(e).color")
-        self.assertEqual(color(), "rgb(98, 245, 187)")
+        self.assertTrue(self.page.locator("#engine").is_hidden())
         self.send(action="telemetry", engineWarning=True)
+        self.assertTrue(self.page.locator("#engine").is_visible())
+        color = lambda: self.page.locator("#engine").evaluate("e => getComputedStyle(e).color")
         self.assertEqual(color(), "rgb(255, 98, 107)")
         self.send(action="telemetry", engine=False)
+        self.assertTrue(self.page.locator("#engine").is_visible())
         self.assertEqual(color(), "rgb(255, 98, 107)")
-        self.send(action="telemetry", engine=True, engineWarning=False)
-        self.assertEqual(color(), "rgb(98, 245, 187)")
+        self.send(action="telemetry", engineWarning=False)
+        self.assertTrue(self.page.locator("#engine").is_hidden())
+        self.send(action="telemetry", engine=True)
+        self.assertTrue(self.page.locator("#engine").is_hidden())
 
     def test_outside_fivem_stays_inactive_even_with_preview_query(self):
         outside = self.browser.new_page()
@@ -473,25 +477,43 @@ class HudTests(unittest.TestCase):
         finally:
             outside.close()
 
-    def test_unboxed_side_icons_reflect_vehicle_states(self):
+    def test_bottom_icons_show_only_relevant_states_without_moving_the_dial(self):
         self.send(action="visibility", visible=True)
-        self.send(action="telemetry", engine=True, engineWarning=False, beltAvailable=True, belt=True, lights=0)
-        self.assertTrue(self.page.locator("#indicators").is_visible())
-        self.assertIn("active", self.page.locator("#engine").get_attribute("class"))
-        self.assertIn("active", self.page.locator("#belt").get_attribute("class"))
-        self.assertEqual(self.page.locator("#lights").get_attribute("aria-label"), "Lights off")
-        self.send(action="telemetry", belt=False)
-        self.assertIn("warning", self.page.locator("#belt").get_attribute("class"))
-        self.send(action="telemetry", beltAvailable=False, lights=2, engineWarning=True)
+        self.assertEqual(self.page.locator("#indicators > :visible").count(), 0)
+        dial = self.page.locator(".dial").bounding_box()
+        for damaged in [False, True]:
+            for belted in [False, True]:
+                for lights in [0, 1, 2]:
+                    with self.subTest(damaged=damaged, belted=belted, lights=lights):
+                        self.send(action="telemetry", engineWarning=damaged,
+                                  beltAvailable=True, belt=belted, lights=lights)
+                        expected = (["engine"] if damaged else []) + (["belt"] if not belted else []) + (["lights"] if lights else [])
+                        actual = self.page.locator("#indicators > :visible").evaluate_all("els => els.map(e => e.id)")
+                        self.assertEqual(actual, expected)
+                        self.assertEqual(self.page.locator(".dial").bounding_box(), dial)
+                        boxes = [self.page.locator("#" + name).bounding_box() for name in expected]
+                        if boxes:
+                            center = (boxes[0]["x"] + boxes[-1]["x"] + boxes[-1]["width"]) / 2
+                            self.assertAlmostEqual(center, dial["x"] + dial["width"] / 2, delta=1)
+                        for box in boxes:
+                            self.assertGreater(box["y"], dial["y"] + dial["height"])
+                        for left, right in zip(boxes, boxes[1:]):
+                            self.assertAlmostEqual(right["x"] - left["x"] - left["width"], 16*.85, delta=1)
+                        if lights:
+                            color = self.page.locator("#lights").evaluate("e => getComputedStyle(e).color")
+                            self.assertEqual(color, "rgb(120, 186, 255)" if lights == 2 else "rgb(231, 237, 240)")
+        # A disabled belt feature or a motorcycle must never show an unbelted warning.
+        self.send(action="telemetry", beltAvailable=False, belt=False)
         self.assertTrue(self.page.locator("#belt").is_hidden())
-        self.assertIn("damaged", self.page.locator("#engine").get_attribute("class"))
-        self.assertIn("high", self.page.locator("#lights").get_attribute("class"))
+        self.send(action="telemetry", speed=60)
+        self.assertTrue(self.page.locator("#belt").is_hidden())
 
     def test_default_hud_and_icons_have_readable_size(self):
         self.send(action="visibility", visible=True)
+        self.send(action="telemetry", engineWarning=True, beltAvailable=True, belt=False, lights=1)
         box = self.page.locator("#hud").bounding_box()
-        self.assertAlmostEqual(box["width"], 306, delta=1)
-        self.assertAlmostEqual(box["height"], 272, delta=1)
+        self.assertAlmostEqual(box["width"], 272, delta=1)
+        self.assertAlmostEqual(box["height"], 299.2, delta=1)
         for name in ["engine", "belt", "lights"]:
             icon = self.page.locator("#" + name).bounding_box()
             self.assertGreaterEqual(icon["width"], 22)
@@ -592,13 +614,15 @@ class HudTests(unittest.TestCase):
                 self.assertLess(speed["y"] + speed["height"], gear["y"])
                 dial = self.page.locator(".dial").bounding_box()
                 icon_boxes = [self.page.locator("#" + name).bounding_box() for name in ["engine", "belt", "lights"]]
-                self.assertLess(icon_boxes[0]["y"], icon_boxes[1]["y"])
-                self.assertLess(icon_boxes[1]["y"], icon_boxes[2]["y"])
-                self.assertGreater(icon_boxes[0]["x"], icon_boxes[1]["x"])
-                self.assertGreater(icon_boxes[1]["x"], icon_boxes[2]["x"])
+                self.assertAlmostEqual(icon_boxes[0]["y"], icon_boxes[1]["y"], delta=1)
+                self.assertAlmostEqual(icon_boxes[1]["y"], icon_boxes[2]["y"], delta=1)
+                self.assertLess(icon_boxes[0]["x"], icon_boxes[1]["x"])
+                self.assertLess(icon_boxes[1]["x"], icon_boxes[2]["x"])
                 for icon in icon_boxes:
                     self.assertGreaterEqual(icon["x"], box["x"])
-                    self.assertLess(icon["x"] + icon["width"], dial["x"] + dial["width"] / 2)
+                    self.assertGreater(icon["y"], dial["y"] + dial["height"])
+                    self.assertLessEqual(icon["x"] + icon["width"], box["x"] + box["width"])
+                    self.assertLessEqual(icon["y"] + icon["height"], box["y"] + box["height"] + .1)
                 for selector in ["#indicators", ".gear", "#engine", "#belt", "#lights"]:
                     css = self.page.locator(selector).evaluate("e => {const s=getComputedStyle(e);return [s.backgroundColor,s.borderTopWidth]}")
                     self.assertEqual(css, ["rgba(0, 0, 0, 0)", "0px"])
